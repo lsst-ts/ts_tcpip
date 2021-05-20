@@ -1,10 +1,10 @@
-#############
-ts_tcp
-#############
+########
+ts_tcpip
+########
 
 Python code to support TCP/IP communication using asyncio.
 
-`Documentation <https://ts-tcp.lsst.io>`_
+`Documentation <https://ts-tcpip.lsst.io>`_
 
 The package is compatible with Vera Rubin LSST DM's ``scons`` build system, and the `eups <https://github.com/RobertLuptonTheGood/eups>`_ package management system.
 Assuming you have the basic DM stack installed you can do the following, from within the package directory:
@@ -19,4 +19,3 @@ This code uses ``pre-commit`` to maintain ``black`` formatting and ``flake8`` co
 To enable this:
 
 * Run ``pre-commit install`` once.
-* If directed, run ``git config --unset-all core.hooksPath`` once.

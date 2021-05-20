@@ -4,9 +4,9 @@ This configuration only affects single-package Sphinx documentation builds.
 """
 
 from documenteer.conf.pipelinespkg import *  # noqa
-import lsst.ts.tcp  # noqa
+import lsst.ts.tcpip  # noqa
 
-project = "ts_tcp"
+project = "ts_tcpip"
 html_theme_options["logotext"] = project  # noqa
 html_title = project
 html_short_title = project

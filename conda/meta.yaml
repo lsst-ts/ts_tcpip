@@ -1,6 +1,6 @@
 {% set data= load_setup_py_data() %}
 package:
-  name: ts-tcp
+  name: ts-tcpip
   version: {{ data.get('version') }}
 
 source:

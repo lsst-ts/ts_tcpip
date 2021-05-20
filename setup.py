@@ -10,10 +10,10 @@ __version__ = "{version}"
 """
 
 setuptools.setup(
-    name="ts_tcp",
+    name="ts_tcpip",
     description="Python code to support TCP/IP communication using asyncio.",
     use_scm_version={
-        "write_to": "python/lsst/ts/tcp/version.py",
+        "write_to": "python/lsst/ts/tcpip/version.py",
         "write_to_template": scm_version_template,
     },
     setup_requires=["setuptools_scm", "pytest-runner"],
@@ -26,6 +26,6 @@ setuptools.setup(
     license="GPL",
     project_urls={
         "Bug Tracker": "https://jira.lsstcorp.org/secure/Dashboard.jspa",
-        "Source Code": "https://github.com/lsst-ts/ts_tcp",
+        "Source Code": "https://github.com/lsst-ts/ts_tcpip",
     },
 )
