@@ -6,4 +6,7 @@
 Version History
 ###############
 
-no releases
+v0.1.0
+------
+
+First release.
