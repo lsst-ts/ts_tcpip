@@ -1,9 +1,12 @@
-.. py:currentmodule:: lsst.ts.tcp
+.. py:currentmodule:: lsst.ts.tcpip
 
-.. _lsst.ts.tcp.version_history:
+.. _lsst.ts.tcpip.version_history:
 
 ###############
 Version History
 ###############
 
-no releases
+v0.1.0
+------
+
+First release.
