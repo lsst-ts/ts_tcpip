@@ -21,7 +21,7 @@
 
 __all__ = ["LOCAL_HOST", "TERMINATOR"]
 
-
+# IPV4 local host
 LOCAL_HOST = "127.0.0.1"
 
 # The standard TCP/IP line terminator (bytes)
