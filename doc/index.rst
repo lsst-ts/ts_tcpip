@@ -108,8 +108,8 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
 
   When a client is connected, `OneClientServer.connected` is true
   and the ``reader`` and ``writer`` attributes are a `asyncio.StreamReader` and `asyncio.StreamWriter`.
-  When ``connected`` is false, do not access the ``reader`` and ``writer`` attributes.
-  For example, here is a trivial echo server that also makes sure the connect_callback
+  When `OneClientServer.connected` is false, do not access the ``reader`` and ``writer`` attributes.
+  For example, here is a trivial echo server that also makes sure ``connect_callback``
   is called when the client closes its connection::
 
     from __future__ import annotations
@@ -120,7 +120,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     from lsst.ts import tcpip
 
 
-    class EchoServer:
+    class EchoServer(tcpip.OneClientServer):
         """An echo server that only serves one client at a time.
 
         Parameters
@@ -132,12 +132,12 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
         def __init__(self, port: int) -> None:
             self.log = logging.getLogger("EchoServer")
             self.read_loop_task: asyncio.Future = asyncio.Future()
-            self.server = tcpip.OneClientServer(
-                host=None,
+            super().__init__(
+                host=tcpip.LOCAL_HOST,
                 port=port,
                 name=self.log.name,
                 log=self.log,
-                connect_callback=self.connected_callback,
+                connect_callback=self.connect_callback,
             )
 
         @classmethod
@@ -151,11 +151,11 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
             """
             print("Starting echo server; use ctrl-C to quit")
             echo_server = cls(port=port)
-            await echo_server.server.start_task
-            print(f"Echo server running on port {echo_server.server.port}")
+            await echo_server.start_task
+            print(f"Echo server running on port {echo_server.port}")
             await asyncio.Future()
 
-        def connected_callback(self, server: tcpip.OneClientServer) -> None:
+        def connect_callback(self, server: EchoServer) -> None:
             """A client has connected or disconnected."""
             self.read_loop_task.cancel()
             if server.connected:
@@ -164,20 +164,20 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
         async def read_loop(self) -> None:
             """Read and echo text."""
             try:
-                while self.server.connected:
+                while self.connected:
                     try:
-                        data_bytes = await self.server.reader.readuntil(tcpip.TERMINATOR)
+                        data_bytes = await self.reader.readuntil(tcpip.TERMINATOR)
                         self.log.debug("read %s", data_bytes)
                     except (asyncio.IncompleteReadError, ConnectionResetError):
                         # Connection is closed; stop reading.
                         # Also call the connect_callback, just as an example;
                         # most code, including this server, need not bother.
-                        self.server.log.debug()
-                        self.server.call_connect_callback()
+                        self.log.debug()
+                        self.call_connect_callback()
                         return
 
-                    self.server.writer.write(data_bytes)
-                    await self.server.writer.drain()
+                    self.writer.write(data_bytes)
+                    await self.writer.drain()
             except Exception:
                 self.log.exception("read_loop failed")
 
