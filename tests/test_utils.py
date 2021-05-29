@@ -150,6 +150,8 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         return data
 
     async def test_close_writer(self) -> None:
+        # Use assert instead of self.assertIsNotNone to make mypy happy.
+        assert self.writer is not None
         self.assertFalse(self.writer.is_closing())
         await tcpip.close_stream_writer(self.writer)
         self.assertTrue(self.writer.is_closing())
