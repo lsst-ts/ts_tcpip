@@ -1,4 +1,5 @@
 {% set data= load_setup_py_data() %}
+
 package:
   name: ts-tcpip
   version: {{ data.get('version') }}
@@ -7,6 +8,7 @@ source:
   path: ../
 
 build:
+  noarch: generic
   script: python -m pip install --no-deps --ignore-installed .
 
 test:

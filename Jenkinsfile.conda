@@ -1,3 +1,2 @@
-
 @Library('JenkinsShared')_
-CondaPipeline([], "ts-tcpip", "lsst.ts.tcpip")
+CondaPipeline([], "ts-tcpip", "lsst.ts.tcpip", "noarch")
