@@ -6,6 +6,12 @@
 Version History
 ###############
 
+v0.3.0
+------
+
+* The conda package now gets built for noarch so it is usable on all platforms.
+
+
 v0.2.0
 ------
 
