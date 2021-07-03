@@ -7,7 +7,8 @@ from documenteer.conf.pipelinespkg import *  # noqa
 import lsst.ts.tcpip  # noqa
 
 project = "ts_tcpip"
-html_theme_options["logotext"] = project  # noqa
+html_theme_options["logotext"] = project  # type: ignore # noqa
 html_title = project
 html_short_title = project
-doxylink = {}  # Avoid warning: Could not find tag file _doxygen/doxygen.tag
+# Avoid warning: Could not find tag file _doxygen/doxygen.tag
+doxylink = {}  # type: ignore

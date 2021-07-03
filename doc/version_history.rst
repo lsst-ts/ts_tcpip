@@ -6,6 +6,11 @@
 Version History
 ###############
 
+v0.3.1
+-------
+
+* Configure pytest to run mypy.
+
 v0.3.0
 ------
 
