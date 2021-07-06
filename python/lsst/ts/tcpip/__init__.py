@@ -19,10 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-try:
-    from .version import *  # type: ignore
-except ImportError:
+import typing
+
+if typing.TYPE_CHECKING:
     __version__ = "?"
+else:
+    try:
+        from .version import *
+    except ImportError:
+        __version__ = "?"
 
 from .constants import *
 from .utils import *
