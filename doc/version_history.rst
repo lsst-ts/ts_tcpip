@@ -6,6 +6,14 @@
 Version History
 ###############
 
+v0.3.2
+------
+
+Changes:
+
+* Prevent pytest from checking the generated ``version.py`` file.
+  This is necessary in order to prevent ``mypy`` from checking that file.
+
 v0.3.1
 -------
 
@@ -15,7 +23,6 @@ v0.3.0
 ------
 
 * The conda package now gets built for noarch so it is usable on all platforms.
-
 
 v0.2.0
 ------
