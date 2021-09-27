@@ -92,7 +92,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(self.server.connected)
 
-    async def ascynTearDown(self) -> None:
+    async def asyncTearDown(self) -> None:
         if self.writer is not None:
             await tcpip.close_stream_writer(self.writer)
         await self.server.close()
