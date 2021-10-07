@@ -6,6 +6,14 @@
 Version History
 ###############
 
+v0.3.3
+------
+
+Changes:
+
+* Fix cleanup in a unit test file.
+* Add ``Jenkinsfile``.
+
 v0.3.2
 ------
 
