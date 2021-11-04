@@ -37,12 +37,66 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     try:
         data = reader.readuntil(tcpip.TERMINATOR)
         # or reader.read, tcpip.read_into, etc.
-    catch (asyncio.IncompleteReadError, ConnectionResetError):
-        # Connection is closed
-        ...handle the closed connection
+    except (asyncio.IncompleteReadError, ConnectionResetError):
+        # Connection is closed.
+        # Do something to tell your application not to write any more data,
+        # such as cancelling the write loop...
+        
+        # Close the writer
+        await lsst.ts.tcpip.close_stream_writer(writer)
 
-  Note that you can only detect a closed connection in the reader;
-  writing to a closed connection does not raise an exception.
+        # Deal with lack of data, e.g. by raising an exception,
+        # or returning None, or...
+
+  Note that you can only reliably detect a closed connection in the stream reader;
+  writing to stream writer after the other end has diconnected does not raise an exception.
+
+* If your application is write-only, you should still monitor the stream reader in order to detect a closed connection.
+  When the read monitor detects a disconnection it should stop your application from writing any more data and close the writer.
+
+  The read monitor should clean up synchronously (without waiting for things to finish) in order to avoid potential a potential race condition between the existing read monitor and a new read monitor for a new connection.
+
+  Here is an example for a client application::
+
+    try:
+        while not reader.at_eof():
+            # 1000 is large enough to clear a reasonable amount of
+            # unexpected data, but not so large as to use excessive memory.
+            data = server.reader.read(1000)
+            if data:
+                log.warning("Read unexpected data; continuing to monitor")
+        log.info("Client disconnected")
+    except (asyncio.IncompleteReadError, ConnectionResetError):
+        log.info("Connection lost; closing writer")
+    finally:
+        # Do something synchronous to tell your application
+        # not to write any more data, such as cancelling the write loop...
+
+        # Then start closing the writer without waiting,
+        # to allow the read monitor to exit immediately.
+        asyncio.create_task(lsst.ts.tcpip.close_stream_writer(writer))
+
+  Monitoring the reader is crucial for a server, because closing the writer frees resources,
+  and, when using `OneClientServer`, it allows a new client to connect.
+  Here is an example for a `OneClientServer` application, where ``server`` is a `OneClientServer` and ``log`` is a `logging.Logger`::
+
+    try:
+        while server.connected:
+            # 1000 is large enough to clear a reasonable amount of
+            # unexpected data, but not so large as to use excessive memory.
+            data = server.reader.read(1000)
+            if data:
+                log.warning("Read unexpected data; continuing to monitor")
+        log.info("Client disconnected")
+    except (asyncio.IncompleteReadError, ConnectionResetError):
+        log.info("Connection lost; closing writer")
+    finally:
+        # Do something synchronous to tell your application
+        # not to write any more data, such as cancelling the write loop...
+
+        # Then start closing the writer without waiting,
+        # to allow the read monitor to exit immediately.
+        asyncio.create_task(server.close_client())
 
 * To read and write text data::
 
@@ -50,7 +104,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     try:
         read_bytes = reader.readuntil(tcpip.TERMINATOR)
         read_text = read_data.decode().strip()
-    catch (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionResetError):
         # Connection is closed
         ...handle the closed connection
 
@@ -80,7 +134,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     data = TrivialStruct()
     try:
         await tcpip.read_into(reader, data)
-    catch (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionResetError):
         # Connection is closed
         ...handle the closed connection
 
@@ -169,17 +223,15 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
                         data_bytes = await self.reader.readuntil(tcpip.TERMINATOR)
                         self.log.debug("read %s", data_bytes)
                     except (asyncio.IncompleteReadError, ConnectionResetError):
-                        # Connection is closed; stop reading.
-                        # Also call the connect_callback, just as an example;
-                        # most code, including this server, need not bother.
-                        self.log.debug()
-                        self.call_connect_callback()
-                        return
+                        self.log.info("Connection lost")
+                        break
 
                     self.writer.write(data_bytes)
                     await self.writer.drain()
             except Exception:
                 self.log.exception("read_loop failed")
+            finally:
+                asyncio.create_task(self.close_client())
 
 .. _asyncio streams: https://docs.python.org/3/library/asyncio-stream.html
 

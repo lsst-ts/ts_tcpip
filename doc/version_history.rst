@@ -6,6 +6,16 @@
 Version History
 ###############
 
+v0.3.4
+------
+
+Changes:
+
+* Enhance the User Guide:
+
+    * Add a section on monitoring the stream reader when no data is expected.
+    * Fix ``catch`` -> ``except`` in examples.
+
 v0.3.3
 ------
 
