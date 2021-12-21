@@ -6,6 +6,13 @@
 Version History
 ###############
 
+v0.3.5
+------
+
+Changes:
+
+* Fix a new mypy error by not checking DM's `lsst/__init__.py` files.
+
 v0.3.4
 ------
 
