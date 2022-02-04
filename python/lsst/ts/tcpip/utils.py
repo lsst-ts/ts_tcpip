@@ -87,4 +87,4 @@ async def write_from(writer: asyncio.StreamWriter, *structs: ctypes.Structure) -
     """
     for struct in structs:
         writer.write(bytes(struct))
-        await writer.drain()
+    await writer.drain()
