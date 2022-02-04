@@ -6,6 +6,13 @@
 Version History
 ###############
 
+v0.3.6
+------
+
+Changes:
+
+* `write_from`: eliminate a race condition that allows tasks to interleave data.
+
 v0.3.5
 ------
 
