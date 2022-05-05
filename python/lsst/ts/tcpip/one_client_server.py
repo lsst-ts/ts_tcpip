@@ -32,8 +32,11 @@ from . import utils
 class OneClientServer:
     """A TCP/IP socket server that serves a single client.
 
-    If additional clients try to connect they are rejected
-    (the socket writer is closed).
+    If additional clients try to connect, they are rejected.
+
+    You must always read data from the ``reader``, even if you don't expect
+    to receive any. Otherwise this class has no way to learn that the client
+    has dropped the connection. See Notes for details.
 
     Parameters
     ----------
@@ -97,7 +100,7 @@ class OneClientServer:
         Future that is set done when a client connects.
         You may set replace it with a new `asyncio.Future`
         if you want to detect when another connection is made
-        (after the current client disconnects).
+        after the current client disconnects.
     done_task : `asyncio.Future`
         Future that is set done when this server is closed, at which point
         it is no longer usable.
@@ -193,7 +196,10 @@ class OneClientServer:
         )
 
     async def close_client(self) -> None:
-        """Close the connected client socket, if any."""
+        """Close the connected client socket, if any.
+
+        Call connect_callback if a client was connected.
+        """
         try:
             self.log.info("Closing the client socket.")
             if self.writer is None:
@@ -210,6 +216,8 @@ class OneClientServer:
 
     async def close(self) -> None:
         """Close socket server and client socket and set the done_task done.
+
+        Call connect_callback if a client was connected.
 
         Always safe to call.
         """
@@ -259,10 +267,15 @@ class OneClientServer:
             Socket writer.
         """
         if self.connected:
-            print("Rejecting connection")
             self.log.error("Rejecting connection; a socket is already connected.")
             await utils.close_stream_writer(writer)
             return
+
+        if self._was_connected:
+            # The client dropped the connection
+            self.call_connect_callback()
+
+        # Accept the connection
         self.reader = reader
         self.writer = writer
         if not self.connected_task.done():
