@@ -26,6 +26,7 @@ import logging
 import socket
 import typing
 
+from lsst.ts.utils import make_done_future
 from . import utils
 
 
@@ -33,10 +34,6 @@ class OneClientServer:
     """A TCP/IP socket server that serves a single client.
 
     If additional clients try to connect, they are rejected.
-
-    You must always read data from the ``reader``, even if you don't expect
-    to receive any. Otherwise this class has no way to learn that the client
-    has dropped the connection. See Notes for details.
 
     Parameters
     ----------
@@ -55,9 +52,9 @@ class OneClientServer:
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
-        Synchronous function to call when a client connects, and when
-        close or close_client is called. Note that it is *not* called
-        when the client end closes its connection (see Notes).
+        Synchronous function to call when the connection state changes.
+        If the client closes the connection it may take up to 0.1 seconds
+        to notice (see Notes).
         It receives one argument: this `OneClientServer`.
     family : socket.AddressFamily
         Can be set to `socket.AF_INET` or `socket.AF_INET6` to limit the server
@@ -112,29 +109,11 @@ class OneClientServer:
     to be listening on more than one socket, each with its own different port.
     You can inspect `server.sockets` to obtain the necessary information.
 
-
     Notes
     -----
     See the User Guide for an example.
 
     Always check that `connected` is True before reading or writing.
-
-    The only way to detect that the client has dropped the connection
-    is to read data from the ``reader``. When the connection is dropped,
-    reading will raise `asyncio.IncompleteReadError` or `ConnectionResetError`.
-    Once one of these exceptions has been raised, ``reader.at_eof()``
-    will be true and the server knows to allow a new client connection.
-
-    Thus you should always read data from the ``reader``, even if you do not
-    expect to receive any. And all reads should catch
-    `asyncio.IncompleteReadError` and `ConnectionResetError`.
-    The usual way to handle these exceptions is to exit from the read task.
-
-    If you want ``connect_callback`` to be called when the client closes
-    its connection (this is rarely necessary), then your code that reads data
-    from the client must call `call_connect_callback` when the read
-    raises one of the exceptions just mentioned. See the User Guide
-    for an example.
     """
 
     def __init__(
@@ -157,6 +136,8 @@ class OneClientServer:
         # called? Used to prevent multiple calls to ``connect_callback``
         # for the same connected state.
         self._was_connected = False
+        self._monitor_connection_task = make_done_future()
+        self._monitor_connection_interval = 0.1
 
         self.server: typing.Optional[asyncio.AbstractServer] = None
         self.reader: typing.Optional[asyncio.StreamReader] = None
@@ -175,6 +156,13 @@ class OneClientServer:
             or self.writer.is_closing()
         )
 
+    async def _monitor_connection(self):
+        """Monitor to detect if the client drops the connection."""
+        while True:
+            if self._was_connected and not self.connected:
+                await self.close_client()
+            await asyncio.sleep(self._monitor_connection_interval)
+
     async def start(self) -> None:
         """Start the TCP/IP server."""
         if self.server is not None:
@@ -190,6 +178,7 @@ class OneClientServer:
         num_sockets = len(self.server.sockets)
         if self.port == 0 and num_sockets == 1:
             self.port = self.server.sockets[0].getsockname()[1]  # type: ignore
+        self._monitor_connection_task = asyncio.create_task(self._monitor_connection())
         self.log.info(
             f"Server running: host={self.host}; port={self.port}; "
             f"listening on {num_sockets} sockets"
@@ -229,6 +218,7 @@ class OneClientServer:
         except Exception:
             self.log.exception("close failed; continuing")
         finally:
+            self._monitor_connection_task.cancel()
             if self.done_task.done():
                 self.done_task.set_result(None)
 
@@ -241,7 +231,7 @@ class OneClientServer:
         connected = self.connected
         self.log.debug(
             f"call_connect_callback: connected={connected}; "
-            f"last_connected={self._was_connected}"
+            f"was_connected={self._was_connected}"
         )
         if self._was_connected != connected:
             if self.__connect_callback is not None:
@@ -272,8 +262,9 @@ class OneClientServer:
             return
 
         if self._was_connected:
-            # The client dropped the connection
-            self.call_connect_callback()
+            # The client dropped the connection but _monitor_connection
+            # has not yet noticed.
+            await self.close_client()
 
         # Accept the connection
         self.reader = reader
