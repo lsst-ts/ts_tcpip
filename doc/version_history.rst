@@ -6,6 +6,19 @@
 Version History
 ###############
 
+v0.3.7
+------
+
+Changes:
+
+* `OneClientServer`:
+
+    * Monitor for a dropped client connection.
+      Close the client and call connect_callback if detected.
+    * Fix a bug whereby accepting a new connection may not call the ``connect_callback`` (DM-34694).
+
+* Fix documentation that falsely claimed you must read from an `asyncio.StreamReader` in order to detect if the other end drops the connection.
+
 v0.3.6
 ------
 
