@@ -50,54 +50,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
 
   Note that you can only reliably detect a closed connection in the stream reader;
   writing to stream writer after the other end has diconnected does not raise an exception.
-
-* If your application is write-only, you should still monitor the stream reader in order to detect a closed connection.
-  When the read monitor detects a disconnection it should stop your application from writing any more data and close the writer.
-
-  The read monitor should clean up synchronously (without waiting for things to finish) in order to avoid potential a potential race condition between the existing read monitor and a new read monitor for a new connection.
-
-  Here is an example for a client application::
-
-    try:
-        while not reader.at_eof():
-            # 1000 is large enough to clear a reasonable amount of
-            # unexpected data, but not so large as to use excessive memory.
-            data = server.reader.read(1000)
-            if data:
-                log.warning("Read unexpected data; continuing to monitor")
-        log.info("Client disconnected")
-    except (asyncio.IncompleteReadError, ConnectionResetError):
-        log.info("Connection lost; closing writer")
-    finally:
-        # Do something synchronous to tell your application
-        # not to write any more data, such as cancelling the write loop...
-
-        # Then start closing the writer without waiting,
-        # to allow the read monitor to exit immediately.
-        asyncio.create_task(lsst.ts.tcpip.close_stream_writer(writer))
-
-  Monitoring the reader is crucial for a server, because closing the writer frees resources,
-  and, when using `OneClientServer`, it allows a new client to connect.
-  Here is an example for a `OneClientServer` application, where ``server`` is a `OneClientServer` and ``log`` is a `logging.Logger`::
-
-    try:
-        while server.connected:
-            # 1000 is large enough to clear a reasonable amount of
-            # unexpected data, but not so large as to use excessive memory.
-            data = server.reader.read(1000)
-            if data:
-                log.warning("Read unexpected data; continuing to monitor")
-        log.info("Client disconnected")
-    except (asyncio.IncompleteReadError, ConnectionResetError):
-        log.info("Connection lost; closing writer")
-    finally:
-        # Do something synchronous to tell your application
-        # not to write any more data, such as cancelling the write loop...
-
-        # Then start closing the writer without waiting,
-        # to allow the read monitor to exit immediately.
-        asyncio.create_task(server.close_client())
-
+  
 * To read and write text data::
 
     # Reading
@@ -157,14 +110,12 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
   Warning: `asyncio.StreamWriter.wait_closed` may raise `asyncio.CancelledError` if the writer is being closed.
   `close_stream_writer` does not catch and ignore that exception, because I felt that was too risky.
 
-* `OneClientServer` is a TCP/IP server that only listens to one client.
+* `OneClientServer` is a TCP/IP server that allows at most one client to connect.
   If an additional client tries to connect, the server closes the server-side stream writer to that client and ignores all data from it.
 
-  When a client is connected, `OneClientServer.connected` is true
-  and the ``reader`` and ``writer`` attributes are a `asyncio.StreamReader` and `asyncio.StreamWriter`.
+  When a client is connected, `OneClientServer.connected` is true and the ``reader`` and ``writer`` attributes are instances of `asyncio.StreamReader` and `asyncio.StreamWriter`.
   When `OneClientServer.connected` is false, do not access the ``reader`` and ``writer`` attributes.
-  For example, here is a trivial echo server that also makes sure ``connect_callback``
-  is called when the client closes its connection::
+  For example, here is a trivial echo server that also makes sure ``connect_callback`` is called when the client closes its connection::
 
     from __future__ import annotations
 
