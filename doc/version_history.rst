@@ -6,6 +6,17 @@
 Version History
 ###############
 
+v0.3.8
+------
+
+Changes:
+
+* Fix the conda build.
+
+Requirements:
+
+* ts_utils
+
 v0.3.7
 ------
 
