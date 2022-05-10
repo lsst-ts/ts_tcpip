@@ -18,7 +18,7 @@ pipeline {
         // To run on a specific node, e.g. for a specific architecture, add `label '...'`.
         docker {
             alwaysPull true
-            image 'docker pull lsstts/salobj:develop'
+            image 'lsstts/salobj:develop'
             args "-u root --entrypoint=''"
         }
     }
@@ -38,7 +38,7 @@ pipeline {
             steps {
                 withEnv(["HOME=${env.WORKSPACE}"]) {
                     sh """
-                        source /home/saluser/.setup_dev.sh || echo "Loading env failed; continuing..."
+                        source /home/saluser/.setup.sh || echo "Loading env failed; continuing..."
                         setup -r .
                         pytest --cov-report html --cov=${env.MODULE_NAME} --junitxml=${env.XML_REPORT_PATH}
                     """
@@ -49,7 +49,7 @@ pipeline {
             steps {
                 withEnv(["HOME=${env.WORKSPACE}"]) {
                     sh """
-                        source /home/saluser/.setup_dev.sh || echo "Loading env failed; continuing..."
+                        source /home/saluser/.setup.sh || echo "Loading env failed; continuing..."
                         setup -r .
                         package-docs build
                     """
@@ -61,7 +61,7 @@ pipeline {
                 withEnv(["HOME=${env.WORKSPACE}"]) {
                     catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                         sh '''
-                            source /home/saluser/.setup_dev.sh || echo "Loading env failed; continuing..."
+                            source /home/saluser/.setup.sh || echo "Loading env failed; continuing..."
                             setup -r .
                             ltd -u ${LSST_IO_CREDS_USR} -p ${LSST_IO_CREDS_PSW} upload \
                                 --product ${DOC_PRODUCT_NAME} --git-ref ${GIT_BRANCH} --dir doc/_build/html
