@@ -26,7 +26,6 @@ import logging
 import socket
 import typing
 
-from lsst.ts.utils import make_done_future
 from . import utils
 
 
@@ -136,7 +135,8 @@ class OneClientServer:
         # called? Used to prevent multiple calls to ``connect_callback``
         # for the same connected state.
         self._was_connected = False
-        self._monitor_connection_task = make_done_future()
+        self._monitor_connection_task: asyncio.Future = asyncio.Future()
+        self._monitor_connection_task.set_result(None)
         self._monitor_connection_interval = 0.1
 
         self.server: typing.Optional[asyncio.AbstractServer] = None
