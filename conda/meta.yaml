@@ -14,7 +14,6 @@ build:
 test:
   requires:
     - ts-conda-build =0.3
-    - ts-utils
   source_files:
     - python
     - tests
