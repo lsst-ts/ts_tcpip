@@ -12,7 +12,7 @@ v0.4.0
 Changes:
 
 * Remove dependency on ts_utils.
-* Improve the continuous integration ``Jenkinsfile`` build discarder.
+* Modernize the continuous integration ``Jenkinsfile``.
 * doc/conf.py: tweak to make linters happier.
 * git ignore .hypothesis.
 * ``setup.cfg``: specify asyncio_mode = auto.
