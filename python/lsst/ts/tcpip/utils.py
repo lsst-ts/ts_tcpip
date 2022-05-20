@@ -23,6 +23,9 @@ __all__ = ["close_stream_writer", "read_into", "write_from"]
 
 import asyncio
 import ctypes
+import logging
+
+log = logging.getLogger()
 
 
 async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
@@ -47,9 +50,12 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
     """
     try:
         writer.close()
-        await writer.wait_closed()
+        # Work around https://bugs.python.org/issue39758
+        await asyncio.wait_for(writer.wait_closed(), timeout=5)
     except ConnectionResetError:
         pass
+    except asyncio.TimeoutError:
+        log.warning("Timed out waiting for stream writer to close; continuing")
 
 
 async def read_into(reader: asyncio.StreamReader, struct: ctypes.Structure) -> None:
