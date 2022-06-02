@@ -97,7 +97,9 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             await tcpip.close_stream_writer(self.writer)
         await self.server.close()
 
-    async def check_read_write(self, reader, writer):
+    async def check_read_write(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         # Write at least 2 sets of data,
         # to detect extra data being written.
         for i in range(2):
@@ -119,13 +121,13 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
                         getattr(data, field_name), getattr(read_data, field_name)
                     )
 
-    def make_random_data(self):
+    def make_random_data(self) -> SampleStruct:
         # random.integers cannot easily generate values > max int64,
         # so don't bother to try
         max_rand_int = np.iinfo(np.int64).max
         data = SampleStruct()
         for field_name, c_type in data._fields_:
-            dtype = np.dtype(c_type)
+            dtype = np.dtype(c_type)  # type: ignore
             if dtype.subdtype is None:
                 scalar_dtype = dtype
             else:
@@ -159,6 +161,8 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.writer.is_closing())
 
     async def test_read_write(self) -> None:
+        assert self.reader
+        assert self.writer
         await self.check_read_write(reader=self.reader, writer=self.server.writer)
         await self.check_read_write(reader=self.server.reader, writer=self.writer)
 
