@@ -156,7 +156,7 @@ class OneClientServer:
             or self.writer.is_closing()
         )
 
-    async def _monitor_connection(self):
+    async def _monitor_connection(self) -> None:
         """Monitor to detect if the client drops the connection."""
         while True:
             if self._was_connected and not self.connected:
