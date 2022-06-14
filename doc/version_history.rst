@@ -6,6 +6,14 @@
 Version History
 ###############
 
+v0.4.1
+------
+
+Changes:
+
+* Add a timeout to `close_stream_writer` in hopes of avoiding an intermittent hang (a bug in Python).
+* Build with pyproject.toml.
+
 v0.4.0
 ------
 

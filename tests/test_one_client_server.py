@@ -35,14 +35,14 @@ logging.basicConfig()
 
 
 class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.callbacks_raise: bool = False
         self.connect_queue: asyncio.Queue = asyncio.Queue()
         self.log = logging.getLogger()
 
     @contextlib.asynccontextmanager
     async def make_server(
-        self, host, family=socket.AF_UNSPEC
+        self, host: str, family: socket.AddressFamily = socket.AF_UNSPEC
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
         # Reset connect_queue so we can call make_server multiple times
         # in one unit test.
@@ -63,7 +63,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def make_client(
-        self, server
+        self, server: tcpip.OneClientServer
     ) -> typing.AsyncGenerator[
         typing.Tuple[asyncio.StreamReader, asyncio.StreamWriter], None
     ]:
@@ -81,7 +81,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             writer.close()
             await writer.wait_closed()
 
-    def connect_callback(self, server):
+    def connect_callback(self, server: tcpip.OneClientServer) -> None:
         print(f"connect_callback: connected={server.connected}")
         if self.callbacks_raise:
             raise RuntimeError(
@@ -89,7 +89,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.connect_queue.put_nowait(server.connected)
 
-    async def assert_next_connected(self, connected, timeout=TCP_TIMEOUT):
+    async def assert_next_connected(
+        self, connected: bool, timeout: int = TCP_TIMEOUT
+    ) -> None:
         """Assert results of next connect_callback.
 
         Parameters
