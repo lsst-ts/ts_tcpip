@@ -36,6 +36,13 @@ random = numpy.random.default_rng(47)
 # Standard timeout for TCP/IP messages (sec).
 TCP_TIMEOUT = 1
 
+# How long to wait for a OneClientServer to start (sec).
+START_TIMEOUT = 1
+
+# How long to wait for OneClientServer to detect
+# that a client has connected (sec).
+CONNECTED_TIMEOUT = 1
+
 logging.basicConfig()
 
 # Length of arrays in the c struct
@@ -86,11 +93,12 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             log=log,
             connect_callback=None,
         )
-        await self.server.start_task
+        await asyncio.wait_for(self.server.start_task, timeout=START_TIMEOUT)
         (self.reader, self.writer) = await asyncio.open_connection(
             host=tcpip.LOCAL_HOST, port=self.server.port
         )
-        self.assertTrue(self.server.connected)
+        await asyncio.wait_for(self.server.connected_task, timeout=CONNECTED_TIMEOUT)
+        assert self.server.connected
 
     async def asyncTearDown(self) -> None:
         if self.writer is not None:
@@ -111,15 +119,14 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
                 try:
                     # array
                     nelts = len(getattr(data, field_name))
-                    self.assertEqual(nelts, ARRAY_LEN)
-                    self.assertEqual(
-                        getattr(data, field_name)[:], getattr(read_data, field_name)[:]
+                    assert nelts == ARRAY_LEN
+                    assert (
+                        getattr(data, field_name)[:]
+                        == getattr(read_data, field_name)[:]
                     )
                 except TypeError:
                     # scalar
-                    self.assertEqual(
-                        getattr(data, field_name), getattr(read_data, field_name)
-                    )
+                    assert getattr(data, field_name) == getattr(read_data, field_name)
 
     def make_random_data(self) -> SampleStruct:
         # random.integers cannot easily generate values > max int64,
@@ -152,13 +159,12 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         return data
 
     async def test_close_stream_writer(self) -> None:
-        # Use assert instead of self.assertIsNotNone to make mypy happy.
         assert self.writer is not None
-        self.assertFalse(self.writer.is_closing())
+        assert not (self.writer.is_closing())
         await tcpip.close_stream_writer(self.writer)
-        self.assertTrue(self.writer.is_closing())
+        assert self.writer.is_closing()
         await tcpip.close_stream_writer(self.writer)
-        self.assertTrue(self.writer.is_closing())
+        assert self.writer.is_closing()
 
     async def test_read_write(self) -> None:
         assert self.reader
