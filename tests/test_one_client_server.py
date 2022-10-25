@@ -26,6 +26,8 @@ import socket
 import typing
 import unittest
 
+import pytest
+
 from lsst.ts import tcpip  # type: ignore
 
 # Standard timeout for TCP/IP messages (sec).
@@ -104,7 +106,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         next_connected = await asyncio.wait_for(
             self.connect_queue.get(), timeout=timeout
         )
-        self.assertEqual(connected, next_connected)
+        assert connected == next_connected
 
     async def check_read_write(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -119,7 +121,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             writer.write(data_bytes)
             await writer.drain()
             read_data_bytes = await reader.readuntil(tcpip.TERMINATOR)
-            self.assertEqual(data_bytes, read_data_bytes)
+            assert data_bytes == read_data_bytes
 
     async def test_port_0_ambiguous(self) -> None:
         """Try to create a server that listens on two sockets: IP4 and IP6.
@@ -136,10 +138,10 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             family=socket.AF_UNSPEC,
         )
         try:
-            self.assertEqual(server.port, 0)
+            assert server.port == 0
             await server.start_task
             if len(server.server.sockets) != 1:
-                self.assertEqual(server.port, 0)
+                assert server.port == 0
             else:
                 raise unittest.SkipTest(
                     "Only one socket created, so this test cannot run."
@@ -157,9 +159,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             connect_callback=None,
         )
         try:
-            self.assertEqual(server.port, 0)
+            assert server.port == 0
             await server.start_task
-            self.assertNotEqual(server.port, 0)
+            assert server.port != 0
         finally:
             await server.close()
 
@@ -174,10 +176,10 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.assert_next_connected(True)
 
             await server.close_client()
-            self.assertFalse(server.connected)
+            assert not (server.connected)
             await self.assert_next_connected(False)
             assert reader.at_eof()
-            with self.assertRaises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
                 await reader.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
@@ -194,9 +196,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.assert_next_connected(True)
 
             await server.close()
-            self.assertFalse(server.connected)
+            assert not (server.connected)
             await self.assert_next_connected(False)
-            with self.assertRaises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
                 await reader.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
@@ -206,15 +208,15 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
         async with self.make_server(host=tcpip.LOCAL_HOST) as server:
-            self.assertFalse(server.connected)
-            self.assertTrue(self.connect_queue.empty())
+            assert not (server.connected)
+            assert self.connect_queue.empty()
             async with self.make_client(server) as (
                 reader,
                 writer,
             ):
-                self.assertTrue(server.connected)
-                self.assertIsNotNone(server.writer)
-                with self.assertRaises(asyncio.TimeoutError):
+                assert server.connected
+                assert server.writer is not None
+                with pytest.raises(asyncio.TimeoutError):
                     await self.assert_next_connected(True)
                 await self.check_read_write(reader=server.reader, writer=writer)
                 await self.check_read_write(reader=reader, writer=server.writer)
@@ -222,14 +224,14 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_initial_conditions(self) -> None:
         for family in (socket.AF_INET, socket.AF_UNSPEC):
             async with self.make_server(host=tcpip.LOCAL_HOST) as server:
-                self.assertFalse(server.connected)
-                self.assertTrue(self.connect_queue.empty())
-                self.assertNotEqual(server.port, 0)
+                assert not (server.connected)
+                assert self.connect_queue.empty()
+                assert server.port != 0
                 async with self.make_client(server) as (
                     reader,
                     writer,
                 ):
-                    self.assertTrue(server.connected)
+                    assert server.connected
                     await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
@@ -249,9 +251,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 bad_reader, bad_writer = await asyncio.open_connection(
                     host=server.host, port=server.port
                 )
-                with self.assertRaises(
-                    (asyncio.IncompleteReadError, ConnectionResetError)
-                ):
+                with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
                     await bad_reader.readuntil(tcpip.TERMINATOR)
             finally:
                 await tcpip.close_stream_writer(bad_writer)
