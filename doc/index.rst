@@ -35,8 +35,14 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
 * When you read data, check for a closed connection as follows::
 
     try:
-        data = reader.readuntil(tcpip.TERMINATOR)
-        # or reader.read, tcpip.read_into, etc.
+        data = reader.readuntil(tcpip.TERMINATOR) # or reader.read or reader.readline
+        # If data is empty then the connection is closed and reader.at_eof() will be True.
+        # If there was unread data on the reader, then a partial result will be returned.
+        # reader.at_eof() will be true if the result is partial.
+
+        # There are other read methods that handle EOF differently.
+        # reader.readexactly and tcpip.read_into raise asyncio.IncompleteReadError
+        # if the connection is closed before enough data is available.
     except (asyncio.IncompleteReadError, ConnectionResetError):
         # Connection is closed.
         # Do something to tell your application not to write any more data,
@@ -50,6 +56,8 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
 
   Note that you can only reliably detect a closed connection in the stream reader;
   writing to stream writer after the other end has diconnected does not raise an exception.
+  Also note that when a reader is closed, ``reader.at_eof()`` is not false right away,
+  but it go false when you read data, or if you simply wait long enough.
   
 * To read and write text data::
 
