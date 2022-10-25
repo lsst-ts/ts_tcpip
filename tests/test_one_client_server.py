@@ -37,7 +37,38 @@ TCP_TIMEOUT = 1
 # that a client has connected (sec).
 CONNECTED_TIMEOUT = 1
 
+# Timeout to determine if a StreamReader is open (sec).
+# Max time to wait for data (none is expected); this can be quite short.
+IS_OPEN_TIMEOUT = 0.1
+
 logging.basicConfig()
+
+
+async def is_reader_open(reader: asyncio.StreamReader) -> bool:
+    """Return True if a stream reader is open, else False.
+
+    Parameters
+    ----------
+    reader : `asyncio.StreamReader`
+        Stream reader.
+
+    Raises
+    ------
+    AssertionError
+        If the stream reader has unread data.
+    """
+    if reader.at_eof():  # unnecessary, but short-circuits the await read
+        return False
+    try:
+        data = await asyncio.wait_for(reader.read(n=100), timeout=IS_OPEN_TIMEOUT)
+    except (asyncio.IncompleteReadError, ConnectionResetError):
+        return False
+    except asyncio.TimeoutError:
+        return True
+    if data:
+        raise AssertionError(f"Read {data=} when none expected")
+    else:
+        return False
 
 
 class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
@@ -331,6 +362,47 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             ):
                 await self.check_read_write(reader=reader, writer=server.writer)
                 await self.check_read_write(reader=server.reader, writer=writer)
+
+    async def test_simultaneous_clients(self) -> None:
+        """Test several clients connecting at the same time.
+
+        One should connect and the others should be disconnected.
+        """
+        num_clients = 5
+        for family in (socket.AF_INET, socket.AF_UNSPEC):
+            async with self.make_server(host=tcpip.LOCAL_HOST, family=family) as server:
+
+                async def open_connection() -> tuple[
+                    asyncio.StreamReader, asyncio.StreamWriter
+                ]:
+                    """Open a client connection to ``server``.
+
+                    Returns
+                    -------
+                    reader_writer : `tuple`[`asyncio.StreamReader`,
+                            `asyncio.StreamWriter`]
+                        Stream reader and writer.
+                    """
+                    return await asyncio.open_connection(
+                        host=server.host, port=server.port, family=server.family
+                    )
+
+                tasks = [
+                    asyncio.create_task(open_connection()) for _ in range(num_clients)
+                ]
+                await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
+                for task in tasks:
+                    assert task.done()
+                    writers = [task.result()[1] for task in tasks]
+                try:
+                    readers = [task.result()[0] for task in tasks]
+                    is_open = [
+                        await is_reader_open(reader) for reader in reversed(readers)
+                    ]
+                    assert len([True for open in is_open if open]) == 1
+                finally:
+                    for writer in writers:
+                        await tcpip.close_stream_writer(writer)
 
 
 if __name__ == "__main__":
