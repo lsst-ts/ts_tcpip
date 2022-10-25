@@ -33,6 +33,10 @@ from lsst.ts import tcpip  # type: ignore
 # Standard timeout for TCP/IP messages (sec).
 TCP_TIMEOUT = 1
 
+# How long to wait for OneClientServer to detect
+# that a client has connected (sec).
+CONNECTED_TIMEOUT = 1
+
 logging.basicConfig()
 
 
@@ -46,6 +50,20 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def make_server(
         self, host: str, family: socket.AddressFamily = socket.AF_UNSPEC
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
+        """Make a OneClientServer with a randomly chosen port.
+
+        Parameters
+        ----------
+        host : `str`
+            Host IP address
+        family : `socket.AddressFamily`
+            IP family; default to AF_UNSPEC.
+
+        Returns
+        -------
+        server : `OneClientServer`
+            The server, with port assigned and ready to receive connections.
+        """
         # Reset connect_queue so we can call make_server multiple times
         # in one unit test.
         self.connect_queue = asyncio.Queue()
@@ -65,19 +83,32 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def make_client(
-        self, server: tcpip.OneClientServer
+        self, server: tcpip.OneClientServer, wait_connected: bool = True
     ) -> typing.AsyncGenerator[
         typing.Tuple[asyncio.StreamReader, asyncio.StreamWriter], None
     ]:
         """Make a TCP/IP client that talks to the server and wait for it to
         connect.
 
-        Returns (reader, writer).
+        Parameters
+        ----------
+        server : `OneClientServer`
+            The server to which to connect.
+        wait_connected : `bool`
+            Wait for the server to detect the connection before returning?
+
+        Returns
+        -------
+            reader_writer : `tuple`[`asyncio.StreamReader`,
+                    `asyncio.StreamWriter`]
+                The stream reader and writer.
         """
         (reader, writer) = await asyncio.open_connection(
             host=server.host, port=server.port, family=server.family
         )
         try:
+            if wait_connected:
+                await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
             yield (reader, writer)
         finally:
             writer.close()
@@ -261,14 +292,17 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_reconnect(self) -> None:
         async with self.make_server(host=tcpip.LOCAL_HOST) as server:
-            async with self.make_client(server):
+            async with self.make_client(server, wait_connected=False):
                 await self.assert_next_connected(True)
 
             # Reconnect as quickly as possible, to make sure
             # we can reconnect before the monitoring loop notices
             # that the client has disconnected.
             # (Leaving the make_client context closes the previous client).
-            async with self.make_client(server) as (reader, writer):
+            async with self.make_client(server, wait_connected=False) as (
+                reader,
+                writer,
+            ):
                 await self.assert_next_connected(False)
                 await self.assert_next_connected(True)
                 await self.check_read_write(reader=reader, writer=server.writer)

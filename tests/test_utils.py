@@ -36,6 +36,13 @@ random = numpy.random.default_rng(47)
 # Standard timeout for TCP/IP messages (sec).
 TCP_TIMEOUT = 1
 
+# How long to wait for a OneClientServer to start (sec).
+START_TIMEOUT = 1
+
+# How long to wait for OneClientServer to detect
+# that a client has connected (sec).
+CONNECTED_TIMEOUT = 1
+
 logging.basicConfig()
 
 # Length of arrays in the c struct
@@ -86,10 +93,11 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             log=log,
             connect_callback=None,
         )
-        await self.server.start_task
+        await asyncio.wait_for(self.server.start_task, timeout=START_TIMEOUT)
         (self.reader, self.writer) = await asyncio.open_connection(
             host=tcpip.LOCAL_HOST, port=self.server.port
         )
+        await asyncio.wait_for(self.server.connected_task, timeout=CONNECTED_TIMEOUT)
         assert self.server.connected
 
     async def asyncTearDown(self) -> None:
