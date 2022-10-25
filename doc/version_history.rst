@@ -6,18 +6,21 @@
 Version History
 ###############
 
-v0.4.1
+v0.4.2
 ------
 
-Changes:
+* Fix unit tests to wait for `OneClientServer`\ s connect_task after making a client connection.
+* `OneClientServer`: test multiple simultaneous connection attempts.
+* Modernize unit tests to use bare assert.
+
+v0.4.1
+------
 
 * Add a timeout to `close_stream_writer` in hopes of avoiding an intermittent hang (a bug in Python).
 * Build with pyproject.toml.
 
 v0.4.0
 ------
-
-Changes:
 
 * Remove dependency on ts_utils.
 * Modernize the continuous integration ``Jenkinsfile``.
@@ -28,8 +31,6 @@ Changes:
 v0.3.8
 ------
 
-Changes:
-
 * Fix the conda build.
 
 Requirements:
@@ -38,8 +39,6 @@ Requirements:
 
 v0.3.7
 ------
-
-Changes:
 
 * `OneClientServer`:
 
@@ -52,21 +51,15 @@ Changes:
 v0.3.6
 ------
 
-Changes:
-
 * `write_from`: eliminate a race condition that allows tasks to interleave data.
 
 v0.3.5
 ------
 
-Changes:
-
 * Fix a new mypy error by not checking DM's `lsst/__init__.py` files.
 
 v0.3.4
 ------
-
-Changes:
 
 * Enhance the User Guide:
 
@@ -76,15 +69,11 @@ Changes:
 v0.3.3
 ------
 
-Changes:
-
 * Fix cleanup in a unit test file.
 * Add ``Jenkinsfile``.
 
 v0.3.2
 ------
-
-Changes:
 
 * Prevent pytest from checking the generated ``version.py`` file.
   This is necessary in order to prevent ``mypy`` from checking that file.
