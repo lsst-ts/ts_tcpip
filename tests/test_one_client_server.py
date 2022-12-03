@@ -27,7 +27,6 @@ import typing
 import unittest
 
 import pytest
-
 from lsst.ts import tcpip  # type: ignore
 
 # Standard timeout for TCP/IP messages (sec).
