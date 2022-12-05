@@ -27,7 +27,6 @@ import unittest
 
 import numpy as np
 import numpy.random
-
 from lsst.ts import tcpip  # type: ignore
 
 random = numpy.random.default_rng(47)

@@ -30,5 +30,5 @@ else:
         __version__ = "?"
 
 from .constants import *
-from .utils import *
 from .one_client_server import *
+from .utils import *
