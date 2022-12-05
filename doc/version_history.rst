@@ -6,10 +6,15 @@
 Version History
 ###############
 
+v0.4.4
+------
+
+* Modernize conda/meta.yaml.
+
 v0.4.3
 ------
 
-* Run isort
+* Run isort.
 * Add isort and mypy to pre-commit and update other pre-commit tasks.
 
 v0.4.2
