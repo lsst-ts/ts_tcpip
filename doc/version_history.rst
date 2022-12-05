@@ -6,6 +6,12 @@
 Version History
 ###############
 
+v0.4.3
+------
+
+* Run isort
+* Add isort and mypy to pre-commit and update other pre-commit tasks.
+
 v0.4.2
 ------
 
