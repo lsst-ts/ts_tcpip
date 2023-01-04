@@ -29,6 +29,7 @@ else:
     except ImportError:
         __version__ = "?"
 
+from .client import *
 from .constants import *
 from .one_client_server import *
 from .utils import *
