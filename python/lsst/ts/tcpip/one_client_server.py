@@ -37,13 +37,13 @@ class OneClientServer:
     Parameters
     ----------
     name : `str`
-        Name used for error messages. Typically "Commands" or "Telemetry".
+        Name used for error messages, e.g. "Commands" or "Telemetry".
     host : `str` or `None`
-        IP address for this server; typically `LOCALHOST` for IP4
-        or "::" for IP6. If `None` then bind to all network interfaces
-        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        IP address for this server; typically `LOCALHOST_IPV4` for IPV4
+        or `LOCALHOST_IPV6` for IPV6. If `None` then bind to all network
+        interfaces (e.g. listen on an IPv4 socket and an IPv6 socket).
         None can cause trouble with port=0;
-        see port in Attributes for more information.
+        see ``port`` in the Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
@@ -76,7 +76,7 @@ class OneClientServer:
         To make the server listen on only one socket with port=0,
         specify the host as a string instead of None. For example:
 
-        * IP4: ``host=LOCAL_HOST, port=0``
+        * IP4: ``host=LOCALHOST_IPV4, port=0``
         * IP6: ``host="::", port=0``
 
         An alternative that allows host=None is to specify family as

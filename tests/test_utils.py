@@ -85,7 +85,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         self.reader: asyncio.StreamReader | None = None
         self.writer: asyncio.StreamWriter | None = None
         self.server = tcpip.OneClientServer(
-            host=tcpip.LOCAL_HOST,
+            host=tcpip.LOCALHOST_IPV4,
             port=0,
             name="test",
             log=log,
@@ -93,7 +93,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         await asyncio.wait_for(self.server.start_task, timeout=START_TIMEOUT)
         (self.reader, self.writer) = await asyncio.open_connection(
-            host=tcpip.LOCAL_HOST, port=self.server.port
+            host=tcpip.LOCALHOST_IPV4, port=self.server.port
         )
         await asyncio.wait_for(self.server.connected_task, timeout=CONNECTED_TIMEOUT)
         assert self.server.connected

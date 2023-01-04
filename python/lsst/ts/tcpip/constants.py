@@ -19,10 +19,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["LOCAL_HOST", "TERMINATOR"]
+__all__ = ["LOCALHOST_IPV4", "LOCALHOST_IPV6", "LOCAL_HOST", "TERMINATOR"]
 
-# IPV4 local host
-LOCAL_HOST = "127.0.0.1"
+# localhost constants
+LOCALHOST_IPV4 = "127.0.0.1"
+LOCALHOST_IPV6 = "::1"
+LOCAL_HOST = LOCALHOST_IPV4  # Deprecated
 
 # The standard TCP/IP line terminator (bytes)
 TERMINATOR = b"\r\n"

@@ -213,7 +213,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_port_0_not_started(self) -> None:
         """Test server.port is 0 until server started, then nonzero."""
         server = tcpip.OneClientServer(
-            host=tcpip.LOCAL_HOST,
+            host=tcpip.LOCALHOST_IPV4,
             port=0,
             name="test",
             log=self.log,
@@ -228,9 +228,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_client(self) -> None:
         """Test OneClientServer.close_client"""
-        async with self.make_server(host=tcpip.LOCAL_HOST) as server, self.make_client(
-            server
-        ) as (
+        async with self.make_server(
+            host=tcpip.LOCALHOST_IPV4
+        ) as server, self.make_client(server) as (
             reader,
             writer,
         ):
@@ -248,9 +248,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close(self) -> None:
         """Test OneClientServer.close"""
-        async with self.make_server(host=tcpip.LOCAL_HOST) as server, self.make_client(
-            server
-        ) as (
+        async with self.make_server(
+            host=tcpip.LOCALHOST_IPV4
+        ) as server, self.make_client(server) as (
             reader,
             writer,
         ):
@@ -268,7 +268,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
-        async with self.make_server(host=tcpip.LOCAL_HOST) as server:
+        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
             async with self.make_client(server) as (
@@ -284,7 +284,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_initial_conditions(self) -> None:
         for family in (socket.AF_INET, socket.AF_UNSPEC):
-            async with self.make_server(host=tcpip.LOCAL_HOST) as server:
+            async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
                 assert not (server.connected)
                 assert self.connect_queue.empty()
                 assert server.port != 0
@@ -296,9 +296,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                     await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
-        async with self.make_server(host=tcpip.LOCAL_HOST) as server, self.make_client(
-            server
-        ) as (
+        async with self.make_server(
+            host=tcpip.LOCALHOST_IPV4
+        ) as server, self.make_client(server) as (
             reader,
             writer,
         ):
@@ -321,7 +321,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.check_read_write(reader=server.reader, writer=writer)
 
     async def test_reconnect(self) -> None:
-        async with self.make_server(host=tcpip.LOCAL_HOST) as server:
+        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
             async with self.make_client(server, wait_connected=False):
                 await self.assert_next_connected(True)
 
@@ -354,7 +354,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_read_write(self) -> None:
         for family in (socket.AF_INET, socket.AF_UNSPEC):
             async with self.make_server(
-                host=tcpip.LOCAL_HOST, family=family
+                host=tcpip.LOCALHOST_IPV4, family=family
             ) as server, self.make_client(server) as (
                 reader,
                 writer,
@@ -369,7 +369,9 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         """
         num_clients = 5
         for family in (socket.AF_INET, socket.AF_UNSPEC):
-            async with self.make_server(host=tcpip.LOCAL_HOST, family=family) as server:
+            async with self.make_server(
+                host=tcpip.LOCALHOST_IPV4, family=family
+            ) as server:
 
                 async def open_connection() -> tuple[
                     asyncio.StreamReader, asyncio.StreamWriter
