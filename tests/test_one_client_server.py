@@ -78,7 +78,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def make_server(
-        self, host: str, family: socket.AddressFamily = socket.AF_UNSPEC
+        self, host: str, sync_callback: bool = False, **kwargs: typing.Any
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
         """Make a OneClientServer with a randomly chosen port.
 
@@ -86,8 +86,12 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         ----------
         host : `str`
             Host IP address
-        family : `socket.AddressFamily`
-            IP family; default to AF_UNSPEC.
+        sync_callback : `bool`
+            Use self.sync_connect_callback as the connect callback?
+            TODO DM-37477: drop this argument when we remove support
+            for synchronous connect_callback functions.
+        **kwargs
+            Additional keyword arguments for OneClientServer
 
         Returns
         -------
@@ -97,23 +101,28 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         # Reset connect_queue so we can call make_server multiple times
         # in one unit test.
         self.connect_queue = asyncio.Queue()
-        server = tcpip.OneClientServer(
+        if sync_callback:
+            connect_callback: typing.Callable[
+                [tcpip.OneClientServer], None | typing.Awaitable[None]
+            ] = self.sync_connect_callback
+        else:
+            connect_callback = self.connect_callback
+        async with tcpip.OneClientServer(
             host=host,
             port=0,
-            name="test",
             log=self.log,
-            family=family,
-            connect_callback=self.connect_callback,
-        )
-        await server.start_task
-        try:
+            connect_callback=connect_callback,
+            name="test",
+            **kwargs,
+        ) as server:
             yield server
-        finally:
-            await server.close()
 
     @contextlib.asynccontextmanager
     async def make_client(
-        self, server: tcpip.OneClientServer, wait_connected: bool = True
+        self,
+        server: tcpip.OneClientServer,
+        wait_connected: bool = True,
+        **kwargs: typing.Any,
     ) -> typing.AsyncGenerator[
         typing.Tuple[asyncio.StreamReader, asyncio.StreamWriter], None
     ]:
@@ -126,6 +135,8 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             The server to which to connect.
         wait_connected : `bool`
             Wait for the server to detect the connection before returning?
+        **kwargs:
+            Additional keywords for `asyncio.open_connection`.
 
         Returns
         -------
@@ -134,7 +145,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 The stream reader and writer.
         """
         (reader, writer) = await asyncio.open_connection(
-            host=server.host, port=server.port, family=server.family
+            host=server.host, port=server.port, **kwargs
         )
         try:
             if wait_connected:
@@ -144,8 +155,16 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             writer.close()
             await writer.wait_closed()
 
-    def connect_callback(self, server: tcpip.OneClientServer) -> None:
+    async def connect_callback(self, server: tcpip.OneClientServer) -> None:
         print(f"connect_callback: connected={server.connected}")
+        if self.callbacks_raise:
+            raise RuntimeError(
+                "connect_callback raising because self.callbacks_raise is true"
+            )
+        self.connect_queue.put_nowait(server.connected)
+
+    def sync_connect_callback(self, server: tcpip.OneClientServer) -> None:
+        print(f"sync_connect_callback: connected={server.connected}")
         if self.callbacks_raise:
             raise RuntimeError(
                 "connect_callback raising because self.callbacks_raise is true"
@@ -193,7 +212,6 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         server = tcpip.OneClientServer(
             host=None,
             port=0,
-            name="test",
             log=self.log,
             connect_callback=None,
             family=socket.AF_UNSPEC,
@@ -215,7 +233,6 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         server = tcpip.OneClientServer(
             host=tcpip.LOCALHOST_IPV4,
             port=0,
-            name="test",
             log=self.log,
             connect_callback=None,
         )
@@ -230,7 +247,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         """Test OneClientServer.close_client"""
         async with self.make_server(
             host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as (
+        ) as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -250,7 +267,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         """Test OneClientServer.close"""
         async with self.make_server(
             host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as (
+        ) as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -271,7 +288,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
-            async with self.make_client(server) as (
+            async with self.make_client(server=server) as (
                 reader,
                 writer,
             ):
@@ -283,22 +300,18 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 await self.check_read_write(reader=reader, writer=server.writer)
 
     async def test_initial_conditions(self) -> None:
-        for family in (socket.AF_INET, socket.AF_UNSPEC):
-            async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
-                assert not (server.connected)
-                assert self.connect_queue.empty()
-                assert server.port != 0
-                async with self.make_client(server) as (
-                    reader,
-                    writer,
-                ):
-                    assert server.connected
-                    await self.assert_next_connected(True)
+        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+            assert not (server.connected)
+            assert self.connect_queue.empty()
+            assert server.port != 0
+            async with self.make_client(server=server):
+                assert server.connected
+                await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
         async with self.make_server(
             host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as (
+        ) as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -340,27 +353,46 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
                 # Give the monitor plenty of time to run and make sure
                 # it has not called the connection_callback.
-                await asyncio.sleep(server._monitor_connection_interval * 5)
+                await asyncio.sleep(server.monitor_connection_interval * 5)
                 assert self.connect_queue.empty()
 
             # Test reconnect after connection monitor notices.
             # (Leaving the make_client context closes the previous client).
             await self.assert_next_connected(False)
-            async with self.make_client(server) as (reader, writer):
+            async with self.make_client(server=server) as (reader, writer):
                 await self.assert_next_connected(True)
                 await self.check_read_write(reader=reader, writer=server.writer)
                 await self.check_read_write(reader=server.reader, writer=writer)
 
     async def test_read_write(self) -> None:
-        for family in (socket.AF_INET, socket.AF_UNSPEC):
+        for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
+            with self.subTest(localhost=localhost):
+                try:
+                    async with self.make_server(
+                        host=localhost
+                    ) as server, self.make_client(server) as (
+                        reader,
+                        writer,
+                    ):
+                        await self.check_read_write(reader=reader, writer=server.writer)
+                        await self.check_read_write(reader=server.reader, writer=writer)
+                except OSError:
+                    if localhost == tcpip.LOCALHOST_IPV6:
+                        raise unittest.SkipTest(
+                            "The test framework does not support IPV6"
+                        )
+                    else:
+                        raise
+
+    # TODO DM-37477: drop this test
+    # once we drop support for sync connect_callback
+    async def test_sync_connect_callback(self) -> None:
+        with pytest.warns(DeprecationWarning):
             async with self.make_server(
-                host=tcpip.LOCALHOST_IPV4, family=family
-            ) as server, self.make_client(server) as (
-                reader,
-                writer,
-            ):
-                await self.check_read_write(reader=reader, writer=server.writer)
-                await self.check_read_write(reader=server.reader, writer=writer)
+                host=tcpip.LOCALHOST_IPV4,
+                sync_callback=True,
+            ) as server, self.make_client(server):
+                await self.assert_next_connected(True)
 
     async def test_simultaneous_clients(self) -> None:
         """Test several clients connecting at the same time.
@@ -368,39 +400,30 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         One should connect and the others should be disconnected.
         """
         num_clients = 5
-        for family in (socket.AF_INET, socket.AF_UNSPEC):
-            async with self.make_server(
-                host=tcpip.LOCALHOST_IPV4, family=family
-            ) as server:
+        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
 
-                async def open_connection() -> tuple[
-                    asyncio.StreamReader, asyncio.StreamWriter
-                ]:
-                    """Open a client connection to ``server``.
+            async def open_connection() -> tuple[
+                asyncio.StreamReader, asyncio.StreamWriter
+            ]:
+                """Open a client connection to ``server``.
 
-                    Returns
-                    -------
-                    reader_writer : `tuple`[`asyncio.StreamReader`,
-                            `asyncio.StreamWriter`]
-                        Stream reader and writer.
-                    """
-                    return await asyncio.open_connection(
-                        host=server.host, port=server.port, family=server.family
-                    )
+                Returns
+                -------
+                reader_writer : `tuple`[`asyncio.StreamReader`,
+                        `asyncio.StreamWriter`]
+                    Stream reader and writer.
+                """
+                return await asyncio.open_connection(host=server.host, port=server.port)
 
-                tasks = [
-                    asyncio.create_task(open_connection()) for _ in range(num_clients)
-                ]
-                await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
-                for task in tasks:
-                    assert task.done()
-                    writers = [task.result()[1] for task in tasks]
-                try:
-                    readers = [task.result()[0] for task in tasks]
-                    is_open = [
-                        await is_reader_open(reader) for reader in reversed(readers)
-                    ]
-                    assert len([True for open in is_open if open]) == 1
-                finally:
-                    for writer in writers:
-                        await tcpip.close_stream_writer(writer)
+            tasks = [asyncio.create_task(open_connection()) for _ in range(num_clients)]
+            await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
+            for task in tasks:
+                assert task.done()
+                writers = [task.result()[1] for task in tasks]
+            try:
+                readers = [task.result()[0] for task in tasks]
+                is_open = [await is_reader_open(reader) for reader in reversed(readers)]
+                assert len([True for open in is_open if open]) == 1
+            finally:
+                for writer in writers:
+                    await tcpip.close_stream_writer(writer)
