@@ -22,7 +22,6 @@
 import asyncio
 import ctypes
 import logging
-import typing
 import unittest
 
 import numpy as np
@@ -83,8 +82,8 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         log = logging.getLogger()
         log.setLevel(logging.INFO)
 
-        self.reader: typing.Optional[asyncio.StreamReader] = None
-        self.writer: typing.Optional[asyncio.StreamWriter] = None
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
         self.server = tcpip.OneClientServer(
             host=tcpip.LOCAL_HOST,
             port=0,
