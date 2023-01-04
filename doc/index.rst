@@ -20,12 +20,16 @@ and covers a few points I found unclear in that documentation.
 
 In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is an `asyncio.StreamWriter`.
 
-* Use `asyncio.open_connection` to construct a TCP/IP client.
-  For example::
+* You may construct a ``reader`` and ``writer`` using `asyncio.open_connection`::
 
     import asyncio
 
     reader, writer = await asyncio.open_connection(host=..., port=...)
+
+    # When finished, close the writer using:
+    await tcpip.close_stream_writer(writer)
+
+  Another option is to use the `Client` class, a wrapper around asyncio.open_connection that is described below.
 
 * When you write data, be sure to call drain::
 
@@ -57,7 +61,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
   Note that you can only reliably detect a closed connection in the stream reader;
   writing to stream writer after the other end has diconnected does not raise an exception.
   Also note that when a reader is closed, ``reader.at_eof()`` is not false right away,
-  but it go false when you read data, or if you simply wait long enough.
+  but it does go to false if you read data, or if you simply wait long enough.
   
 * To read and write text data::
 
@@ -118,6 +122,52 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
   Warning: `asyncio.StreamWriter.wait_closed` may raise `asyncio.CancelledError` if the writer is being closed.
   `close_stream_writer` does not catch and ignore that exception, because I felt that was too risky.
 
+* `Client` is a thin wrapper around `asyncio.open_connection` that provides additional behavior, including a connection callback, a `Client.connected` property, and a `Client.close` method.
+  When the client is connected, `Client.connected` is true and the ``reader`` and ``writer`` attributes are instances of `asyncio.StreamReader` and `asyncio.StreamWriter`.
+  When `Client.connected` is false, do not access the ``reader`` and ``writer`` attributes.
+  This example writes one line of text and prints all lines of text it reads, as well as the connection state::
+
+    import logging
+
+    from lsst.ts import tcpip
+
+    async def connect_callback(client):
+        connection_lost = client.should_be_connected and not client.connected
+        print(f"{client} connected={client.connected}; {connection_lost=}")
+
+    async def read_loop(client):
+        try:
+            while client.connected:
+                data = await client.reader.readuntil(tcpip.TERMINATOR)
+                print(f"read {data}")
+        except (asyncio.IncompleteReadError, ConnectionResetError):
+            print("connection lost")
+            # The client will eventually notice that the connection is lost, but you can speed that up
+            # by calling client.basic_close here. That is better than calling client.close,
+            # because basic_close does not clear the should_be_connected attribute, so the test for
+            # "connection_lost" in the connect_callback function will give the correct answer.
+            await client.basic_close()
+
+    client = tcpip.Client(
+        host=tcpip.LOCALHOST_IPV4,
+        port=...,
+        log=logging.getLogger(),
+        connect_callback=connect_callback,
+    )
+    await client.connected_task
+    read_task = asyncio.create_task(read_loop(client))
+
+    if client.connected:
+        client.writer.write("Example data".encode() + tcpip.TERMINATOR)
+        await client.writer.drain()
+    else:
+        print("client disconnected; cannot write")
+
+    # Wait a second to read some replies, then shut down.
+    await asyncio.sleep(1)
+    read_task.cancel()
+    await client.close()
+
 * `OneClientServer` is a TCP/IP server that allows at most one client to connect.
   If an additional client tries to connect, the server closes the server-side stream writer to that client and ignores all data from it.
 
@@ -146,7 +196,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
             self.log = logging.getLogger("EchoServer")
             self.read_loop_task: asyncio.Future = asyncio.Future()
             super().__init__(
-                host=tcpip.LOCAL_HOST,
+                host=tcpip.LOCALHOST_IPV4,
                 port=port,
                 name=self.log.name,
                 log=self.log,
