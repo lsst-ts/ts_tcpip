@@ -402,7 +402,3 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 finally:
                     for writer in writers:
                         await tcpip.close_stream_writer(writer)
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -170,7 +170,3 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         assert self.writer
         await self.check_read_write(reader=self.reader, writer=self.server.writer)
         await self.check_read_write(reader=self.server.reader, writer=self.writer)
-
-
-if __name__ == "__main__":
-    unittest.main()
