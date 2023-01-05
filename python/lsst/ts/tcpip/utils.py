@@ -78,7 +78,7 @@ async def read_into(reader: asyncio.StreamReader, struct: ctypes.Structure) -> N
         If the connection is closed.
     """
     nbytes = ctypes.sizeof(struct)
-    data = await reader.read(nbytes)
+    data = await reader.readexactly(nbytes)
     if not data:
         raise ConnectionError()
     ctypes.memmove(ctypes.addressof(struct), data, nbytes)
