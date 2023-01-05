@@ -44,7 +44,7 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
 
     Raises
     ------
-    asyncio.CancelledError
+    `asyncio.CancelledError`
         If the writer is already being closed.
         I am not sure if this is expected behavior or a bug in Python.
     """
@@ -74,7 +74,7 @@ async def read_into(reader: asyncio.StreamReader, struct: ctypes.Structure) -> N
 
     Raises
     ------
-    asyncio.IncompleteReadError or ConnectionError
+    `asyncio.IncompleteReadError` or `ConnectionError`
         If the connection is closed.
     """
     nbytes = ctypes.sizeof(struct)
