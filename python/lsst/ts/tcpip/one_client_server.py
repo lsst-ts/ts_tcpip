@@ -24,17 +24,15 @@ from __future__ import annotations
 __all__ = ["OneClientServer"]
 
 import asyncio
-import inspect
 import logging
-import types
 import typing
-import warnings
 
 from . import utils
+from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
 from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
 
 
-class OneClientServer:
+class OneClientServer(BaseClientOrServer):
     """A TCP/IP socket server that serves a single client.
 
     If additional clients try to connect, they are rejected.
@@ -54,19 +52,21 @@ class OneClientServer:
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
-        Asynchronous function to call when the connection state changes.
-        If the client closes the connection it may take up to 0.1 seconds
-        to notice (see Notes).
-        It receives one argument: this `OneClientServer`.
-        For backwards compatibility the function may be synchronous,
-        but that is deprecated.
+        Asynchronous or (deprecated) synchronous function to call when
+        when a client connects or disconnects.
+        If the other end (client) closes the connection, it may take
+        ``monitor_connection_interval`` seconds or longer to notice.
+        The function receives one argument: this `OneClientServer`.
     monitor_connection_interval : `float`, optional
         Interval between checking if the connection is still alive (seconds).
         Defaults to DEFAULT_MONITOR_CONNECTION_INTERVAL.
         If ≤ 0 then do not monitor the connection at all.
+        Monitoring is only useful if you do not regularly read from the reader
+        using the read methods of this class (or copying what they do
+        to detect and report hangups).
     name : `str`, optional
         Name used for log messages, e.g. "Commands" or "Telemetry".
-    **kwargs : dict[str, Any]
+    **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
 
@@ -138,51 +138,21 @@ class OneClientServer:
         host: str | None,
         port: int | None,
         log: logging.Logger,
-        connect_callback: typing.Callable[
-            [OneClientServer], None | typing.Awaitable[None]
-        ]
-        | None = None,
+        connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
         **kwargs: typing.Any,
     ) -> None:
         self.host = host
         self.port = port
-        self.log = log.getChild(f"{type(self).__name__}({name})")
-        self.__connect_callback = connect_callback
-        # TODO DM-37477: remove this block
-        # once we drop support for sync connect_callback
-        if connect_callback is not None and not inspect.iscoroutinefunction(
-            connect_callback
-        ):
-            warnings.warn(
-                "connect_callback should be asynchronous", category=DeprecationWarning
-            )
-        self.name = name
-
-        # Was the client connected last time `call_connected_callback`
-        # called? Used to prevent multiple calls to ``connect_callback``
-        # for the same connected state.
-        self._was_connected = False
-        self._monitor_connection_task: asyncio.Future = asyncio.Future()
-        self._monitor_connection_task.set_result(None)
-        self.monitor_connection_interval = monitor_connection_interval
-
         self.server: asyncio.AbstractServer | None = None
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
         self.connected_task: asyncio.Future = asyncio.Future()
-        self.start_task: asyncio.Future = asyncio.create_task(self.start(**kwargs))
-        self.done_task: asyncio.Future = asyncio.Future()
-
-    @property
-    def connected(self) -> bool:
-        """Return True if a client is connected to this server."""
-        return not (
-            self.reader is None
-            or self.writer is None
-            or self.reader.at_eof()
-            or self.writer.is_closing()
+        super().__init__(
+            log=log,
+            connect_callback=connect_callback,
+            monitor_connection_interval=monitor_connection_interval,
+            name=name,
+            **kwargs,
         )
 
     async def start(self, **kwargs: typing.Any) -> None:
@@ -194,18 +164,18 @@ class OneClientServer:
 
         Parameters
         ----------
-        **kwargs
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keyword arguments for `asyncio.start_server`,
             beyond host and port.
 
         Raises
         ------
-        RuntimeError
+        `RuntimeError`
             If start has already been called and has successfully constructed
             a server.
         """
         if self.server is not None:
-            raise RuntimeError("Cannot call start more than once.")
+            raise RuntimeError("Start already called.")
         self.log.debug("Starting server")
         self.server = await asyncio.start_server(
             self._set_reader_writer,
@@ -217,36 +187,46 @@ class OneClientServer:
         num_sockets = len(self.server.sockets)
         if self.port == 0 and num_sockets == 1:
             self.port = self.server.sockets[0].getsockname()[1]  # type: ignore
-        if self.monitor_connection_interval > 0:
-            self._monitor_connection_task = asyncio.create_task(
-                self._monitor_connection()
-            )
+        self._start_monitoring_connection()
         self.log.info(
             f"Server running: host={self.host}; port={self.port}; "
             f"listening on {num_sockets} sockets"
         )
 
+    async def basic_close_client(self) -> None:
+        """Close the connected client socket, if any.
+
+        Also:
+
+        * Reset `self.connected_task` to a new Future.
+        * Call connect_callback, if a client was connected.
+
+        Unlike `close_client`, this does not touch `self.should_be_connected`.
+
+        Always safe to call.
+        """
+        self.log.info("Closing the client socket.")
+        try:
+            await self._close_client()
+        finally:
+            self.connected_task = asyncio.Future()
+
     async def close_client(self) -> None:
         """Close the connected client socket, if any.
 
-        Call connect_callback if a client was connected.
-        """
-        try:
-            self.log.info("Closing the client socket.")
-            if self.writer is None:
-                return
+        Also:
 
-            writer = self.writer
-            self.writer = None
-            await utils.close_stream_writer(writer)
-            self.connected_task = asyncio.Future()
-        except Exception:
-            self.log.exception("close_client failed; continuing")
-        finally:
-            await self.call_connect_callback()
+        * Set `self.should_be_connected` false.
+        * Reset `self.connected_task` to a new Future.
+        * Call connect_callback, if a client was connected.
+
+        Always safe to call.
+        """
+        self.should_be_connected = False
+        await self.basic_close_client()
 
     async def close(self) -> None:
-        """Close socket server and client socket and set the done_task done.
+        """Close socket server and client socket, and set done_task done.
 
         Call connect_callback if a client was connected.
 
@@ -264,37 +244,20 @@ class OneClientServer:
             if self.done_task.done():
                 self.done_task.set_result(None)
 
-    async def call_connect_callback(self) -> None:
-        """Call self.__connect_callback.
-
-        This is always safe to call. It only calls the callback function
-        if that function is not None and if the connection state has changed
-        since the last time this method was called.
-        """
-        connected = self.connected
-        self.log.debug(
-            f"call_connect_callback: connected={connected}; "
-            f"was_connected={self._was_connected}"
-        )
-        if self._was_connected != connected:
-            if self.__connect_callback is not None:
-                try:
-                    self.log.info("Calling connect_callback")
-                    # TODO DM-37477: simplify this block to
-                    # ``await self._connect_callback(self)``
-                    # once we drop support for sync connect_callback
-                    result = self.__connect_callback(self)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception:
-                    self.log.exception("connect_callback failed.")
-            self._was_connected = connected
-
     async def _monitor_connection(self) -> None:
-        """Monitor to detect if the client drops the connection."""
+        """Monitor to detect if the client drops the connection.
+
+        Start this when the server is started.
+        Cancel this when this class is is closed.
+
+        Raises
+        ------
+        `RuntimeError`
+            If self.monitor_connection_interval <= 0
+        """
         while True:
             if self._was_connected and not self.connected:
-                await self.close_client()
+                await self._close_client()
             await asyncio.sleep(self.monitor_connection_interval)
 
     async def _set_reader_writer(
@@ -327,15 +290,3 @@ class OneClientServer:
         if not self.connected_task.done():
             self.connected_task.set_result(None)
         await self.call_connect_callback()
-
-    async def __aenter__(self) -> OneClientServer:
-        await self.start_task
-        return self
-
-    async def __aexit__(
-        self,
-        type: None | BaseException,
-        value: None | BaseException,
-        traceback: None | types.TracebackType,
-    ) -> None:
-        await self.close()

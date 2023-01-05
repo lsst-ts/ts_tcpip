@@ -53,7 +53,7 @@ async def is_reader_open(reader: asyncio.StreamReader) -> bool:
 
     Raises
     ------
-    AssertionError
+    `AssertionError`
         If the stream reader has unread data.
     """
     if reader.at_eof():  # unnecessary, but short-circuits the await read
@@ -78,7 +78,10 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def make_server(
-        self, host: str, sync_callback: bool = False, **kwargs: typing.Any
+        self,
+        host: str = tcpip.LOCALHOST_IPV4,
+        sync_callback: bool = False,
+        **kwargs: typing.Any,
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
         """Make a OneClientServer with a randomly chosen port.
 
@@ -90,7 +93,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             Use self.sync_connect_callback as the connect callback?
             TODO DM-37477: drop this argument when we remove support
             for synchronous connect_callback functions.
-        **kwargs
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keyword arguments for OneClientServer
 
         Returns
@@ -135,7 +138,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             The server to which to connect.
         wait_connected : `bool`
             Wait for the server to detect the connection before returning?
-        **kwargs:
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keywords for `asyncio.open_connection`.
 
         Returns
@@ -245,9 +248,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_client(self) -> None:
         """Test OneClientServer.close_client"""
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server=server) as (
+        async with self.make_server() as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -265,9 +266,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close(self) -> None:
         """Test OneClientServer.close"""
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server=server) as (
+        async with self.make_server() as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -285,7 +284,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.make_server() as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
             async with self.make_client(server=server) as (
@@ -309,9 +308,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server=server) as (
+        async with self.make_server() as server, self.make_client(server=server) as (
             reader,
             writer,
         ):
@@ -334,7 +331,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             await self.check_read_write(reader=server.reader, writer=writer)
 
     async def test_reconnect(self) -> None:
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.make_server() as server:
             async with self.make_client(server, wait_connected=False):
                 await self.assert_next_connected(True)
 
@@ -384,14 +381,14 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                     else:
                         raise
 
-    # TODO DM-37477: drop this test
+    # TODO DM-37477: modify this test to expect a TypeError (and construct
+    # the OneClientServer directly, instead of calling make_server)
     # once we drop support for sync connect_callback
     async def test_sync_connect_callback(self) -> None:
         with pytest.warns(DeprecationWarning):
-            async with self.make_server(
-                host=tcpip.LOCALHOST_IPV4,
-                sync_callback=True,
-            ) as server, self.make_client(server):
+            async with self.make_server(sync_callback=True) as server, self.make_client(
+                server
+            ):
                 await self.assert_next_connected(True)
 
     async def test_simultaneous_clients(self) -> None:

@@ -21,6 +21,7 @@
 
 import asyncio
 import contextlib
+import ctypes
 import logging
 import typing
 import unittest
@@ -42,6 +43,18 @@ IS_OPEN_TIMEOUT = 0.1
 logging.basicConfig()
 
 
+class ShortStruct(ctypes.Structure):
+    """Simple ctypes struct for testing read_into and write_from"""
+
+    _pack_ = 1
+    _fields_ = [
+        ("ushort_0", ctypes.c_ushort),
+        ("int64_0", ctypes.c_int64),
+        ("double_0", ctypes.c_double),
+        ("float_0", ctypes.c_float),
+    ]
+
+
 class ClientTestCase(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.client_connect_callback_raises: bool = False
@@ -50,7 +63,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def make_server(
-        self, host: str, **kwargs: typing.Any
+        self, host: str = tcpip.LOCALHOST_IPV4, **kwargs: typing.Any
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
         """Make a OneClientServer with a randomly chosen port.
 
@@ -58,7 +71,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         ----------
         host : `str`
             Host IP address
-        **kwargs
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keyword arguments for OneClientServer
 
         Returns
@@ -89,7 +102,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         ----------
         server : `OneClientServer`
             The server to which to connect.
-        **kwargs:
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keywords for `asyncio.open_connection`.
 
         Returns
@@ -135,25 +148,64 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         )
         assert connected == next_connected
 
-    async def check_read_write(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    async def check_read_write_methods(
+        self, reader: tcpip.BaseClientOrServer, writer: tcpip.BaseClientOrServer
     ) -> None:
-        # Check at least 2 writes and reads,
-        # to detect extra characters being written.
-        assert reader is not None
-        assert writer is not None
-        for i in range(2):
-            data_text = f"some data to write {i}"
-            data_bytes = data_text.encode() + tcpip.TERMINATOR
-            writer.write(data_bytes)
-            await writer.drain()
-            read_data_bytes = await reader.readuntil(tcpip.TERMINATOR)
-            assert data_bytes == read_data_bytes
+        write_bytes = b"data for read with n=len"
+        await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(
+            reader.read(n=len(write_bytes)), timeout=TCP_TIMEOUT
+        )
+        assert read_bytes == write_bytes
+
+        nextra = 5  # extra bytes to wait for; an arbitrary positive value
+        write_bytes = b"data for read with n>len"
+        await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(
+            reader.read(n=len(write_bytes) + nextra), timeout=TCP_TIMEOUT
+        )
+        assert read_bytes == write_bytes
+
+        nskip = 5  # arbitrary positive value smaller than the data len
+        write_bytes = b"data for read with n<len"
+        await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(
+            reader.read(n=len(write_bytes) - nskip), timeout=TCP_TIMEOUT
+        )
+        assert read_bytes == write_bytes[0:-nskip]
+        read_bytes = await asyncio.wait_for(reader.read(nskip), timeout=TCP_TIMEOUT)
+        assert read_bytes == write_bytes[-nskip:]
+
+        write_bytes = b"data for readexactly"
+        await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(
+            reader.readexactly(n=len(write_bytes)), timeout=TCP_TIMEOUT
+        )
+        assert read_bytes == write_bytes
+
+        write_bytes = b"terminated data for readline\n"
+        await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(reader.readline(), timeout=TCP_TIMEOUT)
+        assert read_bytes == write_bytes
+
+        write_bytes = b"terminated data for readuntil" + tcpip.TERMINATOR
+        await writer.write(write_bytes)
+        read_bytes = await asyncio.wait_for(
+            reader.readuntil(tcpip.TERMINATOR), timeout=TCP_TIMEOUT
+        )
+        assert read_bytes == write_bytes
+
+        write_struct = ShortStruct(ushort_0=1, int64_0=2, double_0=3.3, float_0=4.4)
+        read_struct = ShortStruct()
+        await asyncio.wait_for(writer.write_from(write_struct), timeout=TCP_TIMEOUT)
+        read_bytes = await asyncio.wait_for(
+            reader.read_into(read_struct), timeout=TCP_TIMEOUT
+        )
+        for field_name, c_type in read_struct._fields_:
+            assert getattr(read_struct, field_name) == getattr(write_struct, field_name)
 
     async def test_basic_close(self) -> None:
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as client:
+        async with self.make_server() as server, self.make_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await client.basic_close()
@@ -165,9 +217,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close(self) -> None:
         """Test Client.close"""
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as client:
+        async with self.make_server() as server, self.make_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await client.close()
@@ -182,39 +232,64 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.client_connect_callback_raises = True
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.make_server() as server:
             assert not server.connected
             async with self.make_client(server) as client:
                 assert client.connected
                 assert server.connected
                 with pytest.raises(asyncio.TimeoutError):
                     await self.assert_next_client_connected(True)
-                await self.check_read_write(reader=server.reader, writer=client.writer)
-                await self.check_read_write(reader=client.reader, writer=server.writer)
+                await self.check_read_write_methods(reader=server, writer=client)
+                await self.check_read_write_methods(reader=client, writer=server)
 
     async def test_initial_conditions(self) -> None:
-        for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
-            async with self.make_server(host=localhost) as server:
-                assert server.port != 0
-                async with self.make_client(server) as client:
-                    assert client.connected
-                    assert server.connected
-                    await self.assert_next_client_connected(True)
+        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+            assert server.port != 0
+            async with self.make_client(server) as client:
+                assert client.connected
+                assert server.connected
+                await self.assert_next_client_connected(True)
 
-    async def test_read_write(self) -> None:
+    async def test_read_write_methods(self) -> None:
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
-            async with self.make_server(host=localhost) as server, self.make_client(
-                server
-            ) as client:
-                await self.check_read_write(reader=client.reader, writer=server.writer)
-                await self.check_read_write(reader=server.reader, writer=client.writer)
+            with self.subTest(localhost=localhost):
+                try:
+                    async with self.make_server(
+                        host=localhost
+                    ) as server, self.make_client(server) as client:
+                        await self.check_read_write_methods(
+                            reader=client, writer=server
+                        )
+                        await self.check_read_write_methods(
+                            reader=server, writer=client
+                        )
+                except OSError:
+                    if localhost == tcpip.LOCALHOST_IPV6:
+                        raise unittest.SkipTest(
+                            "The test framework does not support IPV6"
+                        )
+                    else:
+                        raise
 
     async def test_server_drops_connection(self) -> None:
-        async with self.make_server(
-            host=tcpip.LOCALHOST_IPV4
-        ) as server, self.make_client(server) as client:
+        async with self.make_server() as server, self.make_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await server.close_client()
             await self.assert_next_client_connected(False)
             assert client.should_be_connected
+
+    async def test_sync_connect_callback(self) -> None:
+        """Make sure sync callbacks are rejected"""
+
+        def sync_callback(_: typing.Any) -> None:
+            pass
+
+        async with self.make_server() as server:
+            with pytest.raises(TypeError):
+                tcpip.Client(
+                    host=server.host,
+                    port=server.port,
+                    log=self.log,
+                    connect_callback=sync_callback,
+                )

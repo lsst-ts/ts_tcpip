@@ -24,15 +24,15 @@ from __future__ import annotations
 __all__ = ["Client"]
 
 import asyncio
+import inspect
 import logging
-import types
 import typing
 
-from . import utils
+from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
 from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
 
 
-class Client:
+class Client(BaseClientOrServer):
     """A TCP/IP socket client.
 
     A thin wrapper around `asyncio.open_connection`. Like that function,
@@ -49,16 +49,19 @@ class Client:
         Logger.
     connect_callback : callable or `None`, optional
         Asynchronous function to call when the connection state changes.
-        If the other end (server) closes the connection, it may take up to
-        ``monitor_connection_interval`` seconds to notice (see Notes).
+        If the other end (server) closes the connection, it may take
+        ``monitor_connection_interval`` seconds or longer to notice.
         The function receives one argument: this `Client`.
     monitor_connection_interval : `float`, optional
         Interval between checking if the connection is still alive (seconds).
         Defaults to DEFAULT_MONITOR_CONNECTION_INTERVAL.
         If ≤ 0 then do not monitor the connection at all.
+        Monitoring is only useful if you do not regularly read from the reader
+        using the read methods of this class (or copying what they do
+        to detect and report hangups).
     name : `str`
         Optional name used for log messages.
-    **kwargs : dict[str, Any]
+    **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.open_connection`,
         beyond host and port.
 
@@ -78,16 +81,21 @@ class Client:
     writer : `asyncio.StreamWriter` or None
         Stream writer to write data to the server.
         This will be a stream writer (not None) if `connected` is True.
-    start_task : `asyncio.Future`
-        Future that is set done when the connection is made.
-    done_task : `asyncio.Future`
-        Future that is set done when this client is closed, at which point
-        it is no longer usable.
     should_be_connected : `bool`
         True if the connection was made and close not called.
         The connection was unexpectedly lost if ``should_be_connected``
         is true and ``connected`` is false (unless you close the connection
         by calling `basic_close` or manually closing ``writer``).
+    start_task : `asyncio.Future`
+        Future that is set done when the connection is made.
+    done_task : `asyncio.Future`
+        Future that is set done when this client is closed, at which point
+        it is no longer usable.
+
+    Raises
+    ------
+    `TypeError`
+        If `connect_callback` is synchronous.
 
     Notes
     -----
@@ -107,94 +115,43 @@ class Client:
         host: str | None,
         port: int | None,
         log: logging.Logger,
-        connect_callback: typing.Callable[[Client], typing.Awaitable[None]]
-        | None = None,
+        connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
         **kwargs: typing.Any,
     ) -> None:
+        # TODO DM-37477: delete this test and let the base class handle it
+        # once we drop support for sync connect_callback
+        if connect_callback is not None and not inspect.iscoroutinefunction(
+            connect_callback
+        ):
+            raise TypeError("connect_callback must be asynchronous")
         self.host = host
         self.port = port
-        self.log = log.getChild(f"{type(self).__name__}({name})")
-        self.__connect_callback = connect_callback
-        self.monitor_connection_interval = monitor_connection_interval
-        self.name = name
 
-        # Has the connection been made and not closed at this end?
-        self.should_be_connected = False
-
-        # Has start been called? Used to prevent calling it more than once.
-        self._started = False
-
-        # Was the client connected last time `call_connected_callback`
-        # called? Used to prevent multiple calls to ``connect_callback``
-        # for the same connected state.
-        self._was_connected = False
-
-        self._monitor_connection_task: asyncio.Future = asyncio.Future()
-        self._monitor_connection_task.set_result(None)
-
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
-
-        # Task which is set done when client connects.
-        self.start_task: asyncio.Future = asyncio.create_task(self.start(**kwargs))
-
-        # Task which is set done when the client is closed.
-        self.done_task: asyncio.Future = asyncio.Future()
-
-    @property
-    def connected(self) -> bool:
-        """Return True if this client is connected to a server."""
-        return not (
-            self.reader is None
-            or self.writer is None
-            or self.reader.at_eof()
-            or self.writer.is_closing()
+        super().__init__(
+            log=log,
+            connect_callback=connect_callback,
+            monitor_connection_interval=monitor_connection_interval,
+            name=name,
+            **kwargs,
         )
-
-    async def call_connect_callback(self) -> None:
-        """Call self.__connect_callback.
-
-        This is always safe to call. It only calls the callback function
-        if that function is not None and if the connection state has changed
-        since the last time this method was called.
-        """
-        connected = self.connected
-        self.log.debug(
-            f"call_connect_callback: {connected=}; was_connected={self._was_connected}"
-        )
-        if self._was_connected != connected:
-            self._was_connected = connected
-            if self.__connect_callback is not None:
-                try:
-                    await self.__connect_callback(self)
-                except Exception:
-                    self.log.exception("connect_callback failed.")
 
     async def basic_close(self) -> None:
-        """Close the connected client socket, if any.
+        """Close the connected client socket, if any, and set done_task done.
 
         Like `close` except does not clear ``self.should_be_connected``,
         nor cancel ``self._monitor_connection_task``.
         """
+        self.log.info("Closing")
         try:
-            self.log.info("Closing")
-            if self.writer is None:
-                return
-
-            writer = self.writer
-            self.writer = None
-            await utils.close_stream_writer(writer)
-        except Exception:
-            self.log.exception("close failed; continuing")
+            await self._close_client()
         finally:
-            await self.call_connect_callback()
             if self.done_task.done():
                 self.done_task.set_result(None)
 
     async def close(self) -> None:
-        """Close the connected client socket, if any.
+        """Close the connected client socket, if any, and set done_task done.
 
         Call connect_callback if a client was connected.
         """
@@ -211,52 +168,39 @@ class Client:
 
         Parameters
         ----------
-        **kwargs : dict[str, Any]
+        **kwargs : `dict` [`str`, `typing.Any`]
             Additional keyword arguments for `asyncio.open_connection`,
             beyond host and port.
 
         Raises
         ------
-        RuntimeError
+        `RuntimeError`
             If start already called.
         """
-        if self._started:
-            raise RuntimeError("Start already called")
+        if self.reader is not None:
+            raise RuntimeError("Start already called.")
 
-        self._started = True
-        self.reader, self.writer = await asyncio.open_connection(
+        reader, writer = await asyncio.open_connection(
             host=self.host, port=self.port, **kwargs
         )
-        self.should_be_connected = True
-        if self.monitor_connection_interval > 0:
-            self._monitor_connection_task = asyncio.create_task(
-                self._monitor_connection()
-            )
+        await self._set_reader_writer(reader=reader, writer=writer)
+        self._start_monitoring_connection()
         await self.call_connect_callback()
         self.log.info(f"Client connected to host={self.host}; port={self.port}")
 
     async def _monitor_connection(self) -> None:
         """Monitor to detect if the other end drops the connection.
 
+        Start this when the connection is made.
+        It quits when the connection is lost.
+
         Raises
         ------
-        RuntimeError
+        `RuntimeError`
             If self.monitor_connection_interval <= 0
         """
         if self.monitor_connection_interval <= 0:
             raise RuntimeError(f"Bug: {self.monitor_connection_interval=} <= 0")
         while self.connected:
             await asyncio.sleep(self.monitor_connection_interval)
-        await self.basic_close()
-
-    async def __aenter__(self) -> Client:
-        await self.start_task
-        return self
-
-    async def __aexit__(
-        self,
-        type: None | BaseException,
-        value: None | BaseException,
-        traceback: None | types.TracebackType,
-    ) -> None:
-        await self.close()
+        await self._close_client()
