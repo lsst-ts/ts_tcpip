@@ -64,7 +64,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
         # There are other read methods that handle EOF differently.
         # reader.readexactly and tcpip.read_into raise asyncio.IncompleteReadError
         # if the connection is closed before enough data is available.
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionError):
         # Connection is closed.
         # Do something to tell your application not to write any more data,
         # such as cancelling the write loop...
@@ -87,7 +87,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     try:
         read_bytes = reader.readuntil(tcpip.TERMINATOR)
         read_text = read_data.decode().strip()
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionError):
         # Connection is closed
         ...handle the closed connection
 
@@ -116,7 +116,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     data = TrivialStruct()
     try:
         await tcpip.read_into(reader, data)
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionError):
         # Connection is closed
         ...handle the closed connection
 
@@ -134,7 +134,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     await tcpip.close_stream_writer(writer)
 
   This convenience function calls `asyncio.StreamWriter.close` and `asyncio.StreamWriter.wait_closed`.
-  It also catches and ignores `ConnectionResetError`, which is raised if the writer is already closed.
+  It also catches and ignores `ConnectionError`, which is raised if the writer is already closed.
 
   Warning: `asyncio.StreamWriter.wait_closed` may raise `asyncio.CancelledError` if the writer is being closed.
   `close_stream_writer` does not catch and ignore that exception, because I felt that was too risky.
