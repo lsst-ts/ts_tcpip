@@ -235,7 +235,9 @@ class OneClientServer(BaseClientOrServer):
         try:
             self.log.info("Closing the server.")
             if self.server is not None:
+                # Close the asyncio.Server
                 self.server.close()
+                await self.server.wait_closed()
             await self.close_client()
         except Exception:
             self.log.exception("close failed; continuing")
