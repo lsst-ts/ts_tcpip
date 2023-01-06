@@ -60,7 +60,7 @@ async def is_reader_open(reader: asyncio.StreamReader) -> bool:
         return False
     try:
         data = await asyncio.wait_for(reader.read(n=100), timeout=IS_OPEN_TIMEOUT)
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionError):
         return False
     except asyncio.TimeoutError:
         return True
@@ -258,7 +258,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             assert not (server.connected)
             await self.assert_next_connected(False)
             assert reader.at_eof()
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await reader.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
@@ -275,7 +275,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             await server.close()
             assert not (server.connected)
             await self.assert_next_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await reader.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
@@ -322,7 +322,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 bad_reader, bad_writer = await asyncio.open_connection(
                     host=server.host, port=server.port
                 )
-                with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
+                with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                     await bad_reader.readuntil(tcpip.TERMINATOR)
             finally:
                 await tcpip.close_stream_writer(bad_writer)

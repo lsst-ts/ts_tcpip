@@ -104,7 +104,7 @@ class BaseClientOrServer(abc.ABC):
     * Check that `connected` is True before reading or writing.
       This is especially important for writing, since writing to a closed
       socket does not raise an exception.
-    * Catch (asyncio.IncompleteReadError, ConnectionResetError)
+    * Catch (asyncio.IncompleteReadError, ConnectionError)
       when reading, and call a method to close the client if triggered:
       `Client.basic_close` or `OneClientServer.basic_close_client`.
 
@@ -212,16 +212,14 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
-        `ConnectionResetError`
-            If the connection is lost while reading.
+            If the connection is lost before, or while, reading.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
         assert self.reader is not None  # make mypy happy
         try:
             return await self.reader.read(n)
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
 
@@ -236,20 +234,18 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
+            If the connection is lost before, or while, reading.
         `asyncio.IncompleteReadError`
             If EOF is reached before ``n`` bytes can be read. Use the
             `IncompleteReadError.partial` attribute to get the partially
             read data.
-        `ConnectionResetError`
-            If the connection is lost while reading.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
         assert self.reader is not None  # make mypy happy
         try:
             return await self.reader.readexactly(n)
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
 
@@ -262,16 +258,14 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
-        `ConnectionResetError`
-            If the connection is lost while reading.
+            If the connection is lost before, or while, reading.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
         assert self.reader is not None  # make mypy happy
         try:
             return await self.reader.readline()
-        except ConnectionResetError:
+        except ConnectionError:
             await self._close_client()
             raise
 
@@ -286,9 +280,7 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
-        `ConnectionResetError`
-            If the connection is lost while reading.
+            If the connection is lost before, or while, reading.
         `asyncio.IncompleteReadError`
             If EOF is reached before the complete separator is found
             and the internal buffer is reset.
@@ -301,7 +293,7 @@ class BaseClientOrServer(abc.ABC):
         assert self.reader is not None  # make mypy happy
         try:
             return await self.reader.readuntil(separator)
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
 
@@ -316,20 +308,18 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
+            If the connection is lost before, or while, reading.
         `asyncio.IncompleteReadError`
             If EOF is reached before ``n`` bytes can be read. Use the
             `IncompleteReadError.partial` attribute to get the partially
             read data.
-        `ConnectionResetError`
-            If the connection is lost while reading.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
         assert self.reader is not None  # make mypy happy
         try:
             await utils.read_into(reader=self.reader, struct=struct)
-        except (asyncio.IncompleteReadError, ConnectionResetError):
+        except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
 
@@ -344,7 +334,7 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before writing begins.
+            If ``self.connected`` false before writing begins.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
@@ -363,7 +353,7 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before writing begins.
+            If ``self.connected`` false before writing begins.
         """
         if not self.connected:
             raise ConnectionError("Not connected")
@@ -382,7 +372,7 @@ class BaseClientOrServer(abc.ABC):
         Raises
         ------
         `ConnectionError`
-            If self.connected false before reading begins.
+            If ``self.connected`` false before writing begins.
         """
         if not self.connected:
             raise ConnectionError("Not connected")

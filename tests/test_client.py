@@ -212,7 +212,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             assert not client.connected
             assert client.should_be_connected
             await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.reader.readuntil(tcpip.TERMINATOR)
 
     async def test_close(self) -> None:
@@ -224,7 +224,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             assert not client.connected
             assert not client.should_be_connected
             await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionResetError)):
+            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.reader.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
