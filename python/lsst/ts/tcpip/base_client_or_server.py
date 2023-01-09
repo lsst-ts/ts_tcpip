@@ -53,16 +53,18 @@ class BaseClientOrServer(abc.ABC):
     connect_callback : callable or `None`, optional
         Asynchronous or (deprecated) synchronous function to call when
         the connection state changes.
-        If the other end closes the connection, it may take
-        ``monitor_connection_interval`` seconds or longer to notice.
         The function receives one argument: this `BaseClientOrServer`.
+
+        Note: if the connection is unexpectedly lost and you are not reading
+        from the socket, it may take ``monitor_connection_interval`` seconds
+        or longer to notice.
     monitor_connection_interval : `float`, optional
         Interval between checking if the connection is still alive (seconds).
         Defaults to DEFAULT_MONITOR_CONNECTION_INTERVAL.
         If ≤ 0 then do not monitor the connection at all.
+
         Monitoring is only useful if you do not regularly read from the reader
-        using the read methods of this class (or copying what they do
-        to detect and report hangups).
+        using the read methods of this class.
     name : `str`
         Optional name used for log messages.
     **kwargs : `dict` [`str`, `typing.Any`]
@@ -86,29 +88,30 @@ class BaseClientOrServer(abc.ABC):
         Future that is set done when this client is closed, at which point
         it is no longer usable.
     should_be_connected : `bool`
-        True if the connection was made and close not called.
-        The connection was unexpectedly lost if ``should_be_connected``
-        is true and ``connected`` is false (unless you close the connection
-        by calling `basic_close` or manually closing ``writer``).
+        This flag helps you determine if you unexpectedly lost the connection
+        (e.g. if the other end hung up). It is set true when the connection
+        is made and false when you call `close`. The connection was
+        unexpectedly lost if `connected` is false and ``should_be_connected``
+        is true.
+
+        If your CSC unexpectedly loses its connection to a low-level
+        controller, you should send the CSC to fault state.
+
+        In order for this test to work, you must close the writer using
+        `close`, instead of any other method (such as manually closing
+        ``writer`` or calling `Client.basic_close` or
+        `OneClientServer.basic_close_client`).
 
     Notes
     -----
-    Users should always wait for `start_task` after constructing an instance,
-    before using the instance. This indicates the client has connected.
+    Always wait for ``start_task`` after constructing an instance,
+    before using the instance.
 
     This class provides high-level read and write methods that monitor
-    the connection and reject any attempt to read or write if not connected.
-    If you prefer to use the ``reader`` or ``writer`` attributes directly,
-    please be sure to:
+    the connection (to call ``connect_callback`` as needed) and reject
+    any attempt to read or write if not connected. Please use them.
 
-    * Check that `connected` is True before reading or writing.
-      This is especially important for writing, since writing to a closed
-      socket does not raise an exception.
-    * Catch (asyncio.IncompleteReadError, ConnectionError)
-      when reading, and call a method to close the client if triggered:
-      `Client.basic_close` or `OneClientServer.basic_close_client`.
-
-    This class cay be used as an async context manager, which may be useful
+    This class can be used as an async context manager, which may be useful
     for unit tests.
 
     Subclasses should call `_start_monitoring_connection` from the `start`
@@ -163,7 +166,13 @@ class BaseClientOrServer(abc.ABC):
 
     @property
     def connected(self) -> bool:
-        """Return True if self.reader and self.writer are connected."""
+        """Return True if self.reader and self.writer are connected.
+
+        Note: if the other end drops the connection and if you are not trying
+        to read data (e.g. in a background loop), then it takes the operating
+        system awhile to realize the connection is lost. So this can return
+        true for some unknown time after the connection has been dropped.
+        """
         return not (
             self.reader is None
             or self.writer is None
@@ -205,7 +214,7 @@ class BaseClientOrServer(abc.ABC):
 
         Parameters
         ----------
-        n : `int`, optional
+        n : `int`
             The number of bytes to read. If -1 then block until
             the other end closes its writer, then return all data seen.
 
@@ -228,7 +237,7 @@ class BaseClientOrServer(abc.ABC):
 
         Parameters
         ----------
-        n : `int`, optional
+        n : `int`
             The number of bytes to read.
 
         Raises
@@ -387,12 +396,12 @@ class BaseClientOrServer(abc.ABC):
 
         A server should construct and start the server.
         A client should connect and set reader and writer.
-        Both should call _start_monitoring_connection on success.
-        Both should raise RuntimError if start has already been called.
+        Both should call `_start_monitoring_connection` on success.
+        Both should raise `RuntimeError` if `start` has already been called.
 
         Raises
         ------
-        RuntimeError
+        `RuntimeError`
             If already called.
         """
         raise NotImplementedError()
@@ -448,9 +457,9 @@ class BaseClientOrServer(abc.ABC):
 
         Parameters
         ----------
-        reader : asyncio.StreamReader
+        reader : `asyncio.StreamReader`
             An open stream reader.
-        writer : asyncio.StreamWriter
+        writer : `asyncio.StreamWriter`
             An open stream writer.
         """
         self.should_be_connected = True

@@ -99,15 +99,17 @@ class Client(BaseClientOrServer):
 
     Notes
     -----
-    See the User Guide for an example.
+    See `tests/test_example.py <https://ls.st/514>`_ for an example.
 
-    Always wait for `start_task` after constructing an instance,
+    Always wait for ``start_task`` after constructing an instance,
     before using the instance. This indicates the client has connected.
 
-    Always check that `connected` is True before reading or writing.
+    This class provides high-level read and write methods that monitor
+    the connection (to call ``connect_callback`` as needed) and reject
+    any attempt to read or write if not connected. Please use them.
 
-    Can be used as an async context manager, which may be useful for unit
-    tests.
+    This class can be used as an async context manager, which may be useful
+    for unit tests.
     """
 
     def __init__(

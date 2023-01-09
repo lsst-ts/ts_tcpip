@@ -119,15 +119,17 @@ class OneClientServer(BaseClientOrServer):
 
     Notes
     -----
-    See the User Guide for an example.
+    See `tests/test_example.py <https://ls.st/514>`_ for an example.
 
-    Always wait for `start_task` after constructing an instance,
+    Always wait for ``start_task`` after constructing an instance,
     before using the instance. This indicates that the server
     has started listening for a connection.
 
     You may wait for ``connected_task`` to wait until a client connects.
 
-    Always check that `connected` is True before reading or writing.
+    This class provides high-level read and write methods that monitor
+    the connection (to call ``connect_callback`` as needed) and reject
+    any attempt to read or write if not connected. Please use them.
 
     Can be used as an async context manager, which may be useful for unit
     tests.
