@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # This file is part of ts_tcpip.
 #
 # Developed for the Rubin Observatory Telescope and Site System.
@@ -23,27 +25,26 @@ __all__ = ["OneClientServer"]
 
 import asyncio
 import logging
-import socket
 import typing
 
 from . import utils
+from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
+from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
 
 
-class OneClientServer:
+class OneClientServer(BaseClientOrServer):
     """A TCP/IP socket server that serves a single client.
 
     If additional clients try to connect, they are rejected.
 
     Parameters
     ----------
-    name : `str`
-        Name used for error messages. Typically "Commands" or "Telemetry".
     host : `str` or `None`
-        IP address for this server; typically `LOCALHOST` for IP4
-        or "::" for IP6. If `None` then bind to all network interfaces
-        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        IP address for this server; typically `LOCALHOST_IPV4` for IPV4
+        or `LOCALHOST_IPV6` for IPV6. If `None` then bind to all network
+        interfaces (e.g. listen on an IPv4 socket and an IPv6 socket).
         None can cause trouble with port=0;
-        see port in Attributes for more information.
+        see ``port`` in the Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
@@ -51,15 +52,23 @@ class OneClientServer:
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
-        Synchronous function to call when the connection state changes.
-        If the client closes the connection it may take up to 0.1 seconds
-        to notice (see Notes).
-        It receives one argument: this `OneClientServer`.
-    family : socket.AddressFamily
-        Can be set to `socket.AF_INET` or `socket.AF_INET6` to limit the server
-        to IPv4 or IPv6, respectively. If `socket.AF_UNSPEC` (the default)
-        the family will be determined from host, and if host is None,
-        the server may listen on both IPv4 and IPv6 sockets.
+        Asynchronous or (deprecated) synchronous function to call when
+        when a client connects or disconnects.
+        If the other end (client) closes the connection, it may take
+        ``monitor_connection_interval`` seconds or longer to notice.
+        The function receives one argument: this `OneClientServer`.
+    monitor_connection_interval : `float`, optional
+        Interval between checking if the connection is still alive (seconds).
+        Defaults to DEFAULT_MONITOR_CONNECTION_INTERVAL.
+        If ≤ 0 then do not monitor the connection at all.
+        Monitoring is only useful if you do not regularly read from the reader
+        using the read methods of this class (or copying what they do
+        to detect and report hangups).
+    name : `str`, optional
+        Name used for log messages, e.g. "Commands" or "Telemetry".
+    **kwargs : `dict` [`str`, `typing.Any`]
+        Additional keyword arguments for `asyncio.start_server`,
+        beyond host and port.
 
     Attributes
     ----------
@@ -76,7 +85,7 @@ class OneClientServer:
         To make the server listen on only one socket with port=0,
         specify the host as a string instead of None. For example:
 
-        * IP4: ``host=LOCAL_HOST, port=0``
+        * IP4: ``host=LOCALHOST_IPV4, port=0``
         * IP6: ``host="::", port=0``
 
         An alternative that allows host=None is to specify family as
@@ -110,101 +119,116 @@ class OneClientServer:
 
     Notes
     -----
-    See the User Guide for an example.
+    See `tests/test_example.py <https://ls.st/514>`_ for an example.
 
-    Always check that `connected` is True before reading or writing.
+    Always wait for ``start_task`` after constructing an instance,
+    before using the instance. This indicates that the server
+    has started listening for a connection.
+
+    You may wait for ``connected_task`` to wait until a client connects.
+
+    This class provides high-level read and write methods that monitor
+    the connection (to call ``connect_callback`` as needed) and reject
+    any attempt to read or write if not connected. Please use them.
+
+    Can be used as an async context manager, which may be useful for unit
+    tests.
     """
 
     def __init__(
         self,
-        name: str,
-        host: typing.Optional[str],
-        port: int,
+        host: str | None,
+        port: int | None,
         log: logging.Logger,
-        connect_callback: typing.Optional[typing.Callable],
-        family: socket.AddressFamily = socket.AF_UNSPEC,
+        connect_callback: ConnectCallbackType | None = None,
+        monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
+        name: str = "",
+        **kwargs: typing.Any,
     ) -> None:
-        self.name = name
         self.host = host
         self.port = port
-        self.family = family
-        self.log = log.getChild(f"OneClientServer({name})")
-        self.__connect_callback = connect_callback
-
-        # Was the client connected last time `call_connected_callback`
-        # called? Used to prevent multiple calls to ``connect_callback``
-        # for the same connected state.
-        self._was_connected = False
-        self._monitor_connection_task: asyncio.Future = asyncio.Future()
-        self._monitor_connection_task.set_result(None)
-        self._monitor_connection_interval = 0.1
-
-        self.server: typing.Optional[asyncio.AbstractServer] = None
-        self.reader: typing.Optional[asyncio.StreamReader] = None
-        self.writer: typing.Optional[asyncio.StreamWriter] = None
+        self.server: asyncio.AbstractServer | None = None
         self.connected_task: asyncio.Future = asyncio.Future()
-        self.start_task: asyncio.Future = asyncio.create_task(self.start())
-        self.done_task: asyncio.Future = asyncio.Future()
-
-    @property
-    def connected(self) -> bool:
-        """Return True if a client is connected to this server."""
-        return not (
-            self.reader is None
-            or self.writer is None
-            or self.reader.at_eof()
-            or self.writer.is_closing()
+        super().__init__(
+            log=log,
+            connect_callback=connect_callback,
+            monitor_connection_interval=monitor_connection_interval,
+            name=name,
+            **kwargs,
         )
 
-    async def _monitor_connection(self) -> None:
-        """Monitor to detect if the client drops the connection."""
-        while True:
-            if self._was_connected and not self.connected:
-                await self.close_client()
-            await asyncio.sleep(self._monitor_connection_interval)
+    async def start(self, **kwargs: typing.Any) -> None:
+        """Start the TCP/IP server.
 
-    async def start(self) -> None:
-        """Start the TCP/IP server."""
+        This is called automatically by the constructor,
+        and is not intended to be called by the user.
+        It is a public method so that subclasses can override it.
+
+        Parameters
+        ----------
+        **kwargs : `dict` [`str`, `typing.Any`]
+            Additional keyword arguments for `asyncio.start_server`,
+            beyond host and port.
+
+        Raises
+        ------
+        `RuntimeError`
+            If start has already been called and has successfully constructed
+            a server.
+        """
         if self.server is not None:
-            raise RuntimeError("Cannot call start more than once.")
+            raise RuntimeError("Start already called.")
         self.log.debug("Starting server")
         self.server = await asyncio.start_server(
             self._set_reader_writer,
             host=self.host,
             port=self.port,
-            family=self.family,
+            **kwargs,
         )
         assert self.server.sockets is not None
         num_sockets = len(self.server.sockets)
         if self.port == 0 and num_sockets == 1:
             self.port = self.server.sockets[0].getsockname()[1]  # type: ignore
-        self._monitor_connection_task = asyncio.create_task(self._monitor_connection())
+        self._start_monitoring_connection()
         self.log.info(
             f"Server running: host={self.host}; port={self.port}; "
             f"listening on {num_sockets} sockets"
         )
 
+    async def basic_close_client(self) -> None:
+        """Close the connected client socket, if any.
+
+        Also:
+
+        * Reset `self.connected_task` to a new Future.
+        * Call connect_callback, if a client was connected.
+
+        Unlike `close_client`, this does not touch `self.should_be_connected`.
+
+        Always safe to call.
+        """
+        self.log.info("Closing the client socket.")
+        try:
+            await self._close_client()
+        finally:
+            self.connected_task = asyncio.Future()
+
     async def close_client(self) -> None:
         """Close the connected client socket, if any.
 
-        Call connect_callback if a client was connected.
-        """
-        try:
-            self.log.info("Closing the client socket.")
-            if self.writer is None:
-                return
+        Also:
 
-            writer = self.writer
-            self.writer = None
-            await utils.close_stream_writer(writer)
-            self.connected_task = asyncio.Future()
-        except Exception:
-            self.log.exception("close_client failed; continuing")
-        finally:
-            self.call_connect_callback()
+        * Set `self.should_be_connected` false.
+        * Reset `self.connected_task` to a new Future.
+        * Call connect_callback, if a client was connected.
+
+        Always safe to call.
+        """
+        self.should_be_connected = False
+        await self.basic_close_client()
 
     async def close(self) -> None:
-        """Close socket server and client socket and set the done_task done.
+        """Close socket server and client socket, and set done_task done.
 
         Call connect_callback if a client was connected.
 
@@ -213,7 +237,9 @@ class OneClientServer:
         try:
             self.log.info("Closing the server.")
             if self.server is not None:
+                # Close the asyncio.Server
                 self.server.close()
+                await self.server.wait_closed()
             await self.close_client()
         except Exception:
             self.log.exception("close failed; continuing")
@@ -222,25 +248,21 @@ class OneClientServer:
             if self.done_task.done():
                 self.done_task.set_result(None)
 
-    def call_connect_callback(self) -> None:
-        """Call self.__connect_callback.
+    async def _monitor_connection(self) -> None:
+        """Monitor to detect if the client drops the connection.
 
-        Only call if the connection state has changed since the last time
-        this method was called.
+        Start this when the server is started.
+        Cancel this when this class is is closed.
+
+        Raises
+        ------
+        `RuntimeError`
+            If self.monitor_connection_interval <= 0
         """
-        connected = self.connected
-        self.log.debug(
-            f"call_connect_callback: connected={connected}; "
-            f"was_connected={self._was_connected}"
-        )
-        if self._was_connected != connected:
-            if self.__connect_callback is not None:
-                try:
-                    self.log.info("Calling connect_callback")
-                    self.__connect_callback(self)
-                except Exception:
-                    self.log.exception("connect_callback failed.")
-            self._was_connected = connected
+        while True:
+            if self._was_connected and not self.connected:
+                await self._close_client()
+            await asyncio.sleep(self.monitor_connection_interval)
 
     async def _set_reader_writer(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -271,4 +293,4 @@ class OneClientServer:
         self.writer = writer
         if not self.connected_task.done():
             self.connected_task.set_result(None)
-        self.call_connect_callback()
+        await self.call_connect_callback()

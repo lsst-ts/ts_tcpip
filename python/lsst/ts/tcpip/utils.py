@@ -34,7 +34,7 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
     Safe to call if the stream is closed or being closed, though in the
     latter case this function may raise `asyncio.CancelledError`.
 
-    This function swallows `ConnectionResetError`, because that means
+    This function swallows `ConnectionError`, because that means
     the stream writer is closed.
 
     Parameters
@@ -44,7 +44,7 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
 
     Raises
     ------
-    asyncio.CancelledError
+    `asyncio.CancelledError`
         If the writer is already being closed.
         I am not sure if this is expected behavior or a bug in Python.
     """
@@ -52,9 +52,9 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
         writer.close()
         # Work around https://bugs.python.org/issue39758
         await asyncio.wait_for(writer.wait_closed(), timeout=5)
-    except ConnectionResetError:
+    except ConnectionError:
         log.info(
-            f"wait_close({writer}) raised ConnectionResetError; "
+            f"wait_close({writer}) raised ConnectionError; "
             "this probably means the stream was already being closed."
         )
         pass
@@ -74,11 +74,11 @@ async def read_into(reader: asyncio.StreamReader, struct: ctypes.Structure) -> N
 
     Raises
     ------
-    asyncio.IncompleteReadError or ConnectionError
+    `asyncio.IncompleteReadError` or `ConnectionError`
         If the connection is closed.
     """
     nbytes = ctypes.sizeof(struct)
-    data = await reader.read(nbytes)
+    data = await reader.readexactly(nbytes)
     if not data:
         raise ConnectionError()
     ctypes.memmove(ctypes.addressof(struct), data, nbytes)
