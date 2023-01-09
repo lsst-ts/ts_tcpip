@@ -22,7 +22,6 @@
 import asyncio
 import ctypes
 import logging
-import typing
 import unittest
 
 import numpy as np
@@ -83,10 +82,10 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         log = logging.getLogger()
         log.setLevel(logging.INFO)
 
-        self.reader: typing.Optional[asyncio.StreamReader] = None
-        self.writer: typing.Optional[asyncio.StreamWriter] = None
+        self.reader: asyncio.StreamReader | None = None
+        self.writer: asyncio.StreamWriter | None = None
         self.server = tcpip.OneClientServer(
-            host=tcpip.LOCAL_HOST,
+            host=tcpip.LOCALHOST_IPV4,
             port=0,
             name="test",
             log=log,
@@ -94,7 +93,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         )
         await asyncio.wait_for(self.server.start_task, timeout=START_TIMEOUT)
         (self.reader, self.writer) = await asyncio.open_connection(
-            host=tcpip.LOCAL_HOST, port=self.server.port
+            host=tcpip.LOCALHOST_IPV4, port=self.server.port
         )
         await asyncio.wait_for(self.server.connected_task, timeout=CONNECTED_TIMEOUT)
         assert self.server.connected
@@ -170,7 +169,3 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         assert self.writer
         await self.check_read_write(reader=self.reader, writer=self.server.writer)
         await self.check_read_write(reader=self.server.reader, writer=self.writer)
-
-
-if __name__ == "__main__":
-    unittest.main()

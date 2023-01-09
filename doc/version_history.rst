@@ -6,6 +6,27 @@
 Version History
 ###############
 
+v1.0.0
+------
+
+* Deprecation warning: the ``connect_callback`` `OneClientServer` constructor argument should now be asynchronous.
+* Add `Client` class: a TCP/IP client modeled on `OneClientServer`.
+* Add constants ``LOCALHOST_IPV4`` and ``LOCALHOST_IPV6`` and deprecated constant ``LOCAL_HOST``.
+* Modify `OneClientServer`:
+
+    * The ``connect_callback`` function may now be asynchronous, and synchronous functions are deprecated.
+    * Add read and write methods that check if a client is connected.
+    * Add optional ``monitor_connection_interval`` constructor argument.
+      The default value matches the current behavior, but you can now specify 0 to disable monitoring.
+    * Replace optional ``family`` constructor argument with ``**kwargs``, adding flexibility.
+    * Make the ``name`` constructor argument optional.
+    * Wait for the asyncio server to close in `OneClientServer.close`.
+
+* `read_into` bug fix: read exactly the correct number of bytes, instead of up to the desired number.
+* Change `ConnectionResetError` to `ConnectionError` everywhere.
+  This catches a few extra conditions and is shorter.
+* Expand some unit tests to test IPV6, if supported, else skip that sub test.
+
 v0.4.4
 ------
 

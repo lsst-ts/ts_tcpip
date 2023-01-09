@@ -13,26 +13,97 @@ Python code to support TCP/IP communication using asyncio.
 User Guide
 ==========
 
-Here is an overview of how to use this package.
+The basic classes are:
 
-This guide also serves as a very basic tutorial for using `asyncio streams`_,
-and covers a few points I found unclear in that documentation.
+* `Client`: a TCP/IP client.
+  One use case is CSCs that communicate via TCP/IP with low-level controllers.
+  Providing a connect_callback makes it easy to report the connection state as an event, and also allows you to detect and handle a failed connection.
+* `OneClientServer`: a TCP/IP server that only accepts a single client connection at a time (rejecting extra attempts to connect).
+  One common use case is mock servers in CSC packages.
+
+An example of using these two classes together is provided in `tests/test_example.py <https://ls.st/514>`_.
+This example is written as a unit test in order to avoid bit rot.
+
+Both classes are designed so to be inherited from, in order to add application-specific behavior.
+An example of inheriting from `OneClientServer` is ``MockDomeController`` in ts_atdome, and indeed most mock controllers in CSC packages inherit from `OneClientServer`.
+An example of inheriting from `Client` is ``CommandTelemetryClient`` in ts_hexrotcomm.
+
+Strings vs Bytes
+----------------
+
+All reading and writing is done using `bytes`.
+To write a `str` you must encode it to `bytes`, and to read a `str` you must decode it from `bytes`.
+Usually the default arguments to encode and decode are sufficient.
+For example (where ``client_or_server`` is an instance of `Client` or `OneClientServer`)::
+
+    # Reading
+    read_bytes = client_or_server.readuntil(tcpip.TERMINATOR)
+    read_text = read_data.decode().strip()
+
+    # Writing
+    text_to_write = "some text to write"
+    await client_or_server.write(text_to_write.encode() + tcpip.TERMINATOR)
+
+If your code only works with `str` (quite common) then we strongly recommend that you do all your encoding and decoding in as few places as possible, e.g. methods that read and write.
+This will allow most of your code to use `str`.
+
+JSON
+----
+
+To send an object as json, use the `json` module to encode it before writing, and decode it after reading.
+Be sure to terminate the data in some way, so the reader knows when to stop reading.
+For example::
+
+    # Reading
+    read_bytes = client_or_server.readuntil(tcpip.TERMINATOR)
+    read_str.decode().strip()
+    read_object = json.loads(read_str)
+
+    # Writing
+    write_str = json.dumps(write_object)
+    write_bytes = write_str.encode() + tcpip.TERMINATOR
+
+Binary Structs
+--------------
+
+To read and write a binary struct, define a `ctypes.Structure` and use `BaseClientOrServer.read_into` and `BaseClientOrServer.write_from`.
+For example (where ``client_or_server`` is an instance of `Client` or `OneClientServer`)::
+
+    import ctypes
+
+    class TrivialStruct(ctypes.Structure):
+        _fields_ = [
+            ("a_double", ctypes.c_double),
+            ("three_ints", ctypes.c_int64 * 3),
+        ]
+
+    # Reading
+    data = TrivialStruct()
+    try:
+        await client_or_server.read_into(data)
+    except (asyncio.IncompleteReadError, ConnectionError):
+        # Connection is closed
+        ...handle the closed connection
+
+    # Writing
+    data = TrivialStruct(a_double=1.2e3, three_ints=(-1, 2, 3))
+    await client_or_server.write_from(data)
+
+Details of using `asyncio.StreamReader` and `asyncio.StreamWriter`
+------------------------------------------------------------------
+
+The asyncio documentation is good, but I found a few things surprising.
+`Client` and `OneClientServer` are designed to hide some of these details, but this information may still be helpful.
 
 In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is an `asyncio.StreamWriter`.
 
-* Use `asyncio.open_connection` to construct a TCP/IP client.
-  For example::
-
-    import asyncio
-
-    reader, writer = await asyncio.open_connection(host=..., port=...)
-
-* When you write data, be sure to call drain::
+* When you write data, be sure to call drain, else the data may not actually be written::
 
     writer.write(data_bytes)
     await writer.drain()
 
-* When you read data, check for a closed connection as follows::
+* When you read data, check for a closed connection by catching ``(asyncio.IncompleteReadError, ConnectionError)``.
+  For example::
 
     try:
         data = reader.readuntil(tcpip.TERMINATOR) # or reader.read or reader.readline
@@ -43,7 +114,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
         # There are other read methods that handle EOF differently.
         # reader.readexactly and tcpip.read_into raise asyncio.IncompleteReadError
         # if the connection is closed before enough data is available.
-    except (asyncio.IncompleteReadError, ConnectionResetError):
+    except (asyncio.IncompleteReadError, ConnectionError):
         # Connection is closed.
         # Do something to tell your application not to write any more data,
         # such as cancelling the write loop...
@@ -54,57 +125,15 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
         # Deal with lack of data, e.g. by raising an exception,
         # or returning None, or...
 
-  Note that you can only reliably detect a closed connection in the stream reader;
-  writing to stream writer after the other end has diconnected does not raise an exception.
-  Also note that when a reader is closed, ``reader.at_eof()`` is not false right away,
-  but it go false when you read data, or if you simply wait long enough.
+  A few read methods do not raise `asyncio.IncompleteReadError`.
+  See `asyncio.StreamReader` documentation for details.
+
+* You can only reliably detect a closed connection in the stream reader;
+  writing to stream writer after the other end has disconnected does not raise an exception.
   
-* To read and write text data::
-
-    # Reading
-    try:
-        read_bytes = reader.readuntil(tcpip.TERMINATOR)
-        read_text = read_data.decode().strip()
-    except (asyncio.IncompleteReadError, ConnectionResetError):
-        # Connection is closed
-        ...handle the closed connection
-
-    # Writing
-    text_to_write = "some text to write"
-    writer.write(text_to_write.encode() + tcpip.TERMINATOR)
-    await writer.drain()
-
-
-  Note that ``tcpip.TERMINATOR = b"\r\n"``; this is a common way to terminate TCP/IP text.
-
-* To read and write binary data, define a `ctypes.Structure` and use `read_into` and `write_from`.
-  For example::
-
-    import ctypes
-
-    from lsst.ts import tcpip
-
-
-    class TrivialStruct(ctypes.Structure):
-        _pack_ = 1
-        _fields_ = [
-            ("a_double", ctypes.c_double),
-            ("three_ints", ctypes.c_int64 * 3)
-
-    # Reading
-    data = TrivialStruct()
-    try:
-        await tcpip.read_into(reader, data)
-    except (asyncio.IncompleteReadError, ConnectionResetError):
-        # Connection is closed
-        ...handle the closed connection
-
-    # Writing (write_from does call writer.drain)
-    data = TrivialStruct()
-    data.a_double = 1.2e3
-    data.three_ints[:] = (-1, 2, 3)
-    await write_from(writer, data)
-
+* When a reader is closed, ``reader.at_eof()`` is not false right away.
+  It will go false if you try to read data, or if you simply wait long enough.
+  
 * When you are done with a TCP/IP stream, close the stream writer (you cannot close a stream reader).
   To close a stream writer, call `close_stream_writer`::
 
@@ -113,84 +142,10 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
     await tcpip.close_stream_writer(writer)
 
   This convenience function calls `asyncio.StreamWriter.close` and `asyncio.StreamWriter.wait_closed`.
-  It also catches and ignores `ConnectionResetError`, which is raised if the writer is already closed.
+  It also catches and ignores `ConnectionError`, which is raised if the writer is already closed.
 
   Warning: `asyncio.StreamWriter.wait_closed` may raise `asyncio.CancelledError` if the writer is being closed.
   `close_stream_writer` does not catch and ignore that exception, because I felt that was too risky.
-
-* `OneClientServer` is a TCP/IP server that allows at most one client to connect.
-  If an additional client tries to connect, the server closes the server-side stream writer to that client and ignores all data from it.
-
-  When a client is connected, `OneClientServer.connected` is true and the ``reader`` and ``writer`` attributes are instances of `asyncio.StreamReader` and `asyncio.StreamWriter`.
-  When `OneClientServer.connected` is false, do not access the ``reader`` and ``writer`` attributes.
-  For example, here is a trivial echo server that also makes sure ``connect_callback`` is called when the client closes its connection::
-
-    from __future__ import annotations
-
-    import asyncio
-    import logging
-
-    from lsst.ts import tcpip
-
-
-    class EchoServer(tcpip.OneClientServer):
-        """An echo server that only serves one client at a time.
-
-        Parameters
-        ----------
-        port
-            Port number; 0 to pick an available port.
-        """
-
-        def __init__(self, port: int) -> None:
-            self.log = logging.getLogger("EchoServer")
-            self.read_loop_task: asyncio.Future = asyncio.Future()
-            super().__init__(
-                host=tcpip.LOCAL_HOST,
-                port=port,
-                name=self.log.name,
-                log=self.log,
-                connect_callback=self.connect_callback,
-            )
-
-        @classmethod
-        async def amain(cls, port: int) -> None:
-            """Run the echo server
-
-            Parameters
-            ----------
-            port
-                Port number; 0 to pick an available port.
-            """
-            print("Starting echo server; use ctrl-C to quit")
-            echo_server = cls(port=port)
-            await echo_server.start_task
-            print(f"Echo server running on port {echo_server.port}")
-            await asyncio.Future()
-
-        def connect_callback(self, server: EchoServer) -> None:
-            """A client has connected or disconnected."""
-            self.read_loop_task.cancel()
-            if server.connected:
-                self.read_loop_task = asyncio.create_task(self.read_loop())
-
-        async def read_loop(self) -> None:
-            """Read and echo text."""
-            try:
-                while self.connected:
-                    try:
-                        data_bytes = await self.reader.readuntil(tcpip.TERMINATOR)
-                        self.log.debug("read %s", data_bytes)
-                    except (asyncio.IncompleteReadError, ConnectionResetError):
-                        self.log.info("Connection lost")
-                        break
-
-                    self.writer.write(data_bytes)
-                    await self.writer.drain()
-            except Exception:
-                self.log.exception("read_loop failed")
-            finally:
-                asyncio.create_task(self.close_client())
 
 .. _asyncio streams: https://docs.python.org/3/library/asyncio-stream.html
 
