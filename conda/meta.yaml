@@ -17,7 +17,6 @@ test:
   source_files:
     - python
     - tests
-    - setup.cfg
     - pyproject.toml
   commands:
     - pytest
