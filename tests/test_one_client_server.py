@@ -222,7 +222,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         try:
             assert server.port == 0
             await server.start_task
-            if len(server.server.sockets) != 1:
+            if len(server._server.sockets) != 1:
                 assert server.port == 0
             else:
                 raise unittest.SkipTest(

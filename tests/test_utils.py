@@ -31,9 +31,6 @@ from lsst.ts import tcpip  # type: ignore
 random = numpy.random.default_rng(47)
 
 
-# Standard timeout for TCP/IP messages (sec).
-TCP_TIMEOUT = 1
-
 # How long to wait for a OneClientServer to start (sec).
 START_TIMEOUT = 1
 

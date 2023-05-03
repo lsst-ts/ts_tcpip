@@ -19,21 +19,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import typing
+from lsst.ts import tcpip
 
-if typing.TYPE_CHECKING:
-    __version__ = "?"
-else:
-    try:
-        from .version import *
-    except ImportError:
-        __version__ = "?"
 
-from .base_client_or_server import *
-from .base_one_client_read_loop_server_test_case import *
-from .client import *
-from .constants import *
-from .one_client_read_loop_server import *
-from .one_client_server import *
-from .testone_client_read_loop_server import *
-from .utils import *
+class OneClientReadLoopServerTestCase(tcpip.BaseOneClientReadLoopServerTestCase):
+    async def create_server(self) -> tcpip.OneClientReadLoopServer:
+        return tcpip.TestOneClientReadLoopServer()
+
+    async def test_read_and_dispatch(self) -> None:
+        fail_index = 3
+        async with self.create_server_and_client():
+            for i in range(5):
+                test_line = f"Test data {i}."
+                if i == fail_index:
+                    self.server.fail_next_read = True
+                await self.client.write_str(line=test_line)
+                if i > fail_index:
+                    assert not self.server.connected
+                else:
+                    received_data = await self.server.get_next_data()
+                    assert received_data == test_line

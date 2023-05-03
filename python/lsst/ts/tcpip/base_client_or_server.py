@@ -28,13 +28,14 @@ import asyncio
 import collections.abc
 import ctypes
 import inspect
+import json
 import logging
 import types
 import typing
 import warnings
 
 from . import utils
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
+from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL, TERMINATOR
 
 
 class BaseClientOrServer(abc.ABC):
@@ -332,6 +333,62 @@ class BaseClientOrServer(abc.ABC):
             await self._close_client()
             raise
 
+    async def read_str(self) -> str:
+        """Read data ending in `TERMINATOR`.
+
+        Before returning the data, the TERMINATOR is stripped and the data is
+        decoded into an UTF-8 string.
+
+        Returns
+        -------
+        str:
+            Data decoded into a string.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `asyncio.IncompleteReadError`
+            If EOF is reached before the complete separator is found
+            and the internal buffer is reset.
+        `LimitOverrunError`
+            If the amount of data read exceeds the configured stream lmit.
+            The data is left in the internal buffer and can be read again.
+        `UnicodeError`
+            If decoding fails.
+        """
+        data = await self.readuntil(TERMINATOR)
+        term_len = len(TERMINATOR)
+        return data[0:-term_len].decode(encoding="utf-8", errors="strict")
+
+    async def read_json(self) -> typing.Any:
+        """Read JSON data.
+
+        Before returning the data, it is decoded using JSON.
+
+        Returns
+        -------
+        str:
+            Data decoded from JSON.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `asyncio.IncompleteReadError`
+            If EOF is reached before the complete separator is found
+            and the internal buffer is reset.
+        `LimitOverrunError`
+            If the amount of data read exceeds the configured stream lmit.
+            The data is left in the internal buffer and can be read again.
+        `TypeError`
+            If the data are of a type that cannot be decoded from JSON.
+        `json.JSONDecodeError`
+            If the data cannot be decoded from JSON.
+        """
+        data = await self.read_str()
+        return json.loads(data)
+
     async def write(self, data: bytes) -> None:
         """Write data and call ``drain``.
 
@@ -375,8 +432,8 @@ class BaseClientOrServer(abc.ABC):
 
         Parameters
         ----------
-        structs : `ctypes.Structure`
-            Structure to write.
+        structs : `list` [`ctypes.Structure`]
+            Structures to write.
 
         Raises
         ------
@@ -387,6 +444,41 @@ class BaseClientOrServer(abc.ABC):
             raise ConnectionError("Not connected")
         assert self.writer is not None  # make mypy happy
         await utils.write_from(self.writer, *structs)
+
+    async def write_str(self, line: str) -> None:
+        """Write a string of data.
+
+        Before writing, the data first gets UTF-8 encoded and the `TERMINATOR`
+        gets appended.
+
+        Parameters
+        ----------
+        line : `str`
+            The line of data to be written.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `UnicodeError`
+            If encoding fails.
+        """
+        data = line.encode(encoding="utf-8", errors="strict") + TERMINATOR
+        await self.write(data)
+
+    async def write_json(self, data: typing.Any) -> None:
+        """Write data in JSON format.
+
+        Before writing, the data is encoded using JSON and the TERMINATOR is
+        appended.
+
+        Parameters
+        ----------
+        data : `any`
+            The data to be written.
+        """
+        line = json.dumps(data)
+        await self.write_str(line)
 
     @abc.abstractmethod
     async def start(self, **kwargs: typing.Any) -> None:
