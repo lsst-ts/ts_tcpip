@@ -375,7 +375,7 @@ class BaseClientOrServer(abc.ABC):
 
         Parameters
         ----------
-        struct : `ctypes.Structure`
+        structs : `ctypes.Structure`
             Structure to write.
 
         Raises
