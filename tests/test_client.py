@@ -151,7 +151,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
     async def check_read_write_methods(
         self, reader: tcpip.BaseClientOrServer, writer: tcpip.BaseClientOrServer
     ) -> None:
-        write_bytes = b"data for read with n=len"
+        write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n=len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
             reader.read(n=len(write_bytes)), timeout=TCP_TIMEOUT
@@ -159,7 +159,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         assert read_bytes == write_bytes
 
         nextra = 5  # extra bytes to wait for; an arbitrary positive value
-        write_bytes = b"data for read with n>len"
+        write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n>len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
             reader.read(n=len(write_bytes) + nextra), timeout=TCP_TIMEOUT
@@ -167,7 +167,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         assert read_bytes == write_bytes
 
         nskip = 5  # arbitrary positive value smaller than the data len
-        write_bytes = b"data for read with n<len"
+        write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n<len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
             reader.read(n=len(write_bytes) - nskip), timeout=TCP_TIMEOUT
@@ -176,19 +176,22 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         read_bytes = await asyncio.wait_for(reader.read(nskip), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes[-nskip:]
 
-        write_bytes = b"data for readexactly"
+        write_bytes = b"data with unicode \xf0\x9f\x98\x80 for readexactly"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
             reader.readexactly(n=len(write_bytes)), timeout=TCP_TIMEOUT
         )
         assert read_bytes == write_bytes
 
-        write_bytes = b"terminated data for readline\n"
+        write_bytes = b"terminated data with unicode \xf0\x9f\x98\x80 for readline\n"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(reader.readline(), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes
 
-        write_bytes = b"terminated data for readuntil" + tcpip.TERMINATOR
+        write_bytes = (
+            b"terminated data with unicode \xf0\x9f\x98\x80 for readuntil"
+            + tcpip.TERMINATOR
+        )
         await writer.write(write_bytes)
         read_bytes = await asyncio.wait_for(
             reader.readuntil(tcpip.TERMINATOR), timeout=TCP_TIMEOUT
@@ -203,6 +206,16 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         )
         for field_name, c_type in read_struct._fields_:
             assert getattr(read_struct, field_name) == getattr(write_struct, field_name)
+
+        write_str = "data with unicode \U0001F600 for read_str"
+        await writer.write_str(write_str)
+        read_str = await asyncio.wait_for(reader.read_str(), timeout=TCP_TIMEOUT)
+        assert read_str == write_str
+
+        write_json = {"msg": "data with unicode \U0001F600 for read_json"}
+        await writer.write_json(write_json)
+        read_json = await asyncio.wait_for(reader.read_json(), timeout=TCP_TIMEOUT)
+        assert read_json == write_json
 
     async def test_basic_close(self) -> None:
         async with self.make_server() as server, self.make_client(server) as client:

@@ -147,7 +147,7 @@ class OneClientServer(BaseClientOrServer):
     ) -> None:
         self.host = host
         self.port = port
-        self.server: asyncio.AbstractServer | None = None
+        self._server: asyncio.AbstractServer | None = None
         self.connected_task: asyncio.Future = asyncio.Future()
         super().__init__(
             log=log,
@@ -176,19 +176,19 @@ class OneClientServer(BaseClientOrServer):
             If start has already been called and has successfully constructed
             a server.
         """
-        if self.server is not None:
+        if self._server is not None:
             raise RuntimeError("Start already called.")
         self.log.debug("Starting server")
-        self.server = await asyncio.start_server(
+        self._server = await asyncio.start_server(
             self._set_reader_writer,
             host=self.host,
             port=self.port,
             **kwargs,
         )
-        assert self.server.sockets is not None
-        num_sockets = len(self.server.sockets)
+        assert self._server.sockets is not None
+        num_sockets = len(self._server.sockets)
         if self.port == 0 and num_sockets == 1:
-            self.port = self.server.sockets[0].getsockname()[1]  # type: ignore
+            self.port = self._server.sockets[0].getsockname()[1]  # type: ignore
         self._start_monitoring_connection()
         self.log.info(
             f"Server running: host={self.host}; port={self.port}; "
@@ -236,10 +236,10 @@ class OneClientServer(BaseClientOrServer):
         """
         try:
             self.log.info("Closing the server.")
-            if self.server is not None:
+            if self._server is not None:
                 # Close the asyncio.Server
-                self.server.close()
-                await self.server.wait_closed()
+                self._server.close()
+                await self._server.wait_closed()
             await self.close_client()
         except Exception:
             self.log.exception("close failed; continuing")

@@ -6,6 +6,15 @@
 Version History
 ###############
 
+v1.1.0
+------
+
+* Use ts_pre_commit_conf.
+* Fix an incorrect argument name in a method doc string.
+* Add an abstract subclass of OneClientServer that includes a generic read loop.
+* Add read_str, write_str, read_json and write_json methods to `BaseClientOrServer`.
+* Add a base test case for OneClientReadLoopServer for use in unit tests.
+
 v1.0.1
 ------
 
