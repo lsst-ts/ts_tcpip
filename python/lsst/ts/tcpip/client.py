@@ -71,26 +71,8 @@ class Client(BaseClientOrServer):
         IP address; the ``host`` constructor argument.
     port : `int` | `None`
         IP port; the ``port`` constructor argument.
-    log : `logging.Logger`
-        A child of the ``log`` constructor argument.
-    name : `str`
-        The ``name`` constructor argument.
-    reader : `asyncio.StreamReader` or None
-        Stream reader to read data from the server.
-        This will be a stream reader (not None) if `connected` is True.
-    writer : `asyncio.StreamWriter` or None
-        Stream writer to write data to the server.
-        This will be a stream writer (not None) if `connected` is True.
-    should_be_connected : `bool`
-        True if the connection was made and close not called.
-        The connection was unexpectedly lost if ``should_be_connected``
-        is true and ``connected`` is false (unless you close the connection
-        by calling `basic_close` or manually closing ``writer``).
-    start_task : `asyncio.Future`
-        Future that is set done when the connection is made.
-    done_task : `asyncio.Future`
-        Future that is set done when this client is closed, at which point
-        it is no longer usable.
+    plus...
+        Attributes provided by parent class `BaseClientOrServer`.
 
     Raises
     ------
