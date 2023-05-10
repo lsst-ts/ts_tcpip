@@ -62,7 +62,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         self.log = logging.getLogger()
 
     @contextlib.asynccontextmanager
-    async def make_server(
+    async def create_server(
         self, host: str = tcpip.LOCALHOST_IPV4, **kwargs: typing.Any
     ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
         """Make a OneClientServer with a randomly chosen port.
@@ -90,7 +90,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             yield server
 
     @contextlib.asynccontextmanager
-    async def make_client(
+    async def create_client(
         self,
         server: tcpip.OneClientServer,
         **kwargs: typing.Any,
@@ -218,7 +218,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         assert read_json == write_json
 
     async def test_basic_close(self) -> None:
-        async with self.make_server() as server, self.make_client(server) as client:
+        async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await client.basic_close()
@@ -230,7 +230,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close(self) -> None:
         """Test Client.close"""
-        async with self.make_server() as server, self.make_client(server) as client:
+        async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await client.close()
@@ -245,9 +245,9 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.client_connect_callback_raises = True
-        async with self.make_server() as server:
+        async with self.create_server() as server:
             assert not server.connected
-            async with self.make_client(server) as client:
+            async with self.create_client(server) as client:
                 assert client.connected
                 assert server.connected
                 with pytest.raises(asyncio.TimeoutError):
@@ -256,9 +256,9 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
                 await self.check_read_write_methods(reader=client, writer=server)
 
     async def test_initial_conditions(self) -> None:
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert server.port != 0
-            async with self.make_client(server) as client:
+            async with self.create_client(server) as client:
                 assert client.connected
                 assert server.connected
                 await self.assert_next_client_connected(True)
@@ -267,9 +267,9 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
             with self.subTest(localhost=localhost):
                 try:
-                    async with self.make_server(
+                    async with self.create_server(
                         host=localhost
-                    ) as server, self.make_client(server) as client:
+                    ) as server, self.create_client(server) as client:
                         await self.check_read_write_methods(
                             reader=client, writer=server
                         )
@@ -285,7 +285,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
                         raise
 
     async def test_server_drops_connection(self) -> None:
-        async with self.make_server() as server, self.make_client(server) as client:
+        async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
             await server.close_client()
@@ -298,7 +298,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         def sync_callback(_: typing.Any) -> None:
             pass
 
-        async with self.make_server() as server:
+        async with self.create_server() as server:
             with pytest.raises(TypeError):
                 tcpip.Client(
                     host=server.host,

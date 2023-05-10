@@ -22,20 +22,23 @@
 from lsst.ts import tcpip
 
 
-class OneClientReadLoopServerTestCase(tcpip.BaseOneClientReadLoopServerTestCase):
-    async def create_server(self) -> tcpip.OneClientReadLoopServer:
-        return tcpip.TestOneClientReadLoopServer()
+class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
+    server_class = tcpip.TestOneClientReadLoopServer
 
     async def test_read_and_dispatch(self) -> None:
-        fail_index = 3
-        async with self.create_server_and_client():
-            for i in range(5):
+        num_good_writes = 5
+        async with self.create_server() as server, self.create_client(server) as client:
+            await self.assert_next_connected(True)
+            for i in range(num_good_writes + 1):
+                print(f"{i=}; {client.connected=}")
                 test_line = f"Test data {i}."
-                if i == fail_index:
-                    self.server.fail_next_read = True
-                await self.client.write_str(line=test_line)
-                if i > fail_index:
-                    assert not self.server.connected
-                else:
-                    received_data = await self.server.get_next_data()
+                if i == num_good_writes:
+                    server.fail_next_read = True
+                await client.write_str(line=test_line)
+                if i < num_good_writes:
+                    received_data = await server.get_next_data()
                     assert received_data == test_line
+                else:
+                    await self.assert_next_connected(False)
+                    assert not server.connected
+                    assert not client.connected
