@@ -132,6 +132,39 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             )
         self.client_connect_queue.put_nowait(client.connected)
 
+    async def check_read_write_not_connected(self, client: tcpip.Client) -> None:
+        """Check that all read and write Client methods raise
+        ConnectionError if not connected.
+        """
+        assert not client.connected
+
+        struct = ShortStruct()
+        with pytest.raises(ConnectionError):
+            await client.read_json()
+        with pytest.raises(ConnectionError):
+            await client.read_str()
+        with pytest.raises(ConnectionError):
+            await client.read(1)
+        with pytest.raises(ConnectionError):
+            await client.readexactly(1)
+        with pytest.raises(ConnectionError):
+            await client.readline()
+        with pytest.raises(ConnectionError):
+            await client.readuntil(b"\n")
+        with pytest.raises(ConnectionError):
+            await client.read_into(struct)
+        with pytest.raises(ConnectionError):
+            await client.write(b"\n")
+        with pytest.raises(ConnectionError):
+            await client.write_from(struct)
+        with pytest.raises(ConnectionError):
+            await client.writelines([b" ", b"\n"])
+
+        # Check that StreamReader.readline reads 0 bytes if disconnected
+        assert (
+            await asyncio.wait_for(client.reader.readline(), timeout=TCP_TIMEOUT) == b""
+        )
+
     async def assert_next_client_connected(
         self, connected: bool, timeout: int = TCP_TIMEOUT
     ) -> None:
@@ -262,27 +295,25 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
-            await client.basic_close()
+            await asyncio.wait_for(client.basic_close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert client.should_be_connected
             await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readline()
+            await self.check_read_write_not_connected(client)
 
     async def test_close(self) -> None:
         """Test Client.close"""
         async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
-            await client.close()
+            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert not client.should_be_connected
             await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readline()
+            await self.check_read_write_not_connected(client)
 
             # Subsequent calls should have no effect
-            await client.close()
+            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
 
     async def test_connect_callback_raises(self) -> None:
         self.client_connect_callback_raises = True
@@ -329,7 +360,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         async with self.create_server() as server, self.create_client(server) as client:
             await self.assert_next_client_connected(True)
 
-            await server.close_client()
+            await asyncio.wait_for(server.close_client(), timeout=TCP_TIMEOUT)
             await self.assert_next_client_connected(False)
             assert client.should_be_connected
 
