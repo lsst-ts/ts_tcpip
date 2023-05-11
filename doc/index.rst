@@ -18,50 +18,36 @@ The basic classes are:
 * `Client`: a TCP/IP client.
   One use case is CSCs that communicate via TCP/IP with low-level controllers.
   Providing a connect_callback makes it easy to report the connection state as an event, and also allows you to detect and handle a failed connection.
-* `OneClientServer`: a TCP/IP server that only accepts a single client connection at a time (rejecting extra attempts to connect).
+* `OneClientReadLoopServer`: an abstract TCP/IP server that only accepts a single client connection at a time (rejecting extra attempts to connect) and runs a read loop while connected.
   One common use case is mock servers in CSC packages.
+  Override the read_and_dispatch method in a subclass to use it.
+* `OneClientServer`: the concrete parent class of `OneClientReadLoopServer`; a server with no read loop.
+  Most users will find `OneClientReadLoopServer` more convenient.
+* `BaseOneClientServerTestCase`: a base class for unit tests of servers.
 
-An example of using these two classes together is provided in `tests/test_example.py <https://ls.st/514>`_.
+A simple example of using `Client` and `OneClientReadLoopServer` together is provided in `tests/test_example.py <https://ls.st/514>`_.
 This example is written as a unit test in order to avoid bit rot.
 
-Both classes are designed so to be inherited from, in order to add application-specific behavior.
-An example of inheriting from `OneClientServer` is ``MockDomeController`` in ts_atdome, and indeed most mock controllers in CSC packages inherit from `OneClientServer`.
-An example of inheriting from `Client` is ``CommandTelemetryClient`` in ts_hexrotcomm.
+The server classes are designed so to be inherited from, in order to add application-specific behavior.
+An example of inheriting from `OneClientReadLoopServer` is ``MockDomeController`` in ts_atdome.
+One can also inherit from `Client`; see ``CommandTelemetryClient`` in ts_hexrotcomm for an example.
 
-Strings vs Bytes
+Strings and JSON
 ----------------
 
-All reading and writing is done using `bytes`.
-To write a `str` you must encode it to `bytes`, and to read a `str` you must decode it from `bytes`.
-Usually the default arguments to encode and decode are sufficient.
-For example (where ``client_or_server`` is an instance of `Client` or `OneClientServer`)::
+In the Python standard TCP/IP library, all reading and writing is done using `bytes`.
+To write a `str` you must encode it to `bytes` and, usually, append a terminator, then write the resulting bytes.
+To read a `str` you usually readuntil a terminator, decode the read `bytes` to a str and, usually, strip the terminator.
 
-    # Reading
-    read_bytes = client_or_server.readuntil(tcpip.TERMINATOR)
-    read_text = read_data.decode().strip()
+However, `Client` and the server classes offer convenience methods to do this for you, as well as methods to read and write json-encoded data (via the common base class `BaseClientOrServer`):
 
-    # Writing
-    text_to_write = "some text to write"
-    await client_or_server.write(text_to_write.encode() + tcpip.TERMINATOR)
+* `BaseClientOrServer.read_str`
+* `BaseClientOrServer.write_str`
+* `BaseClientOrServer.read_json`
+* `BaseClientOrServer.read_json`
 
-If your code only works with `str` (quite common) then we strongly recommend that you do all your encoding and decoding in as few places as possible, e.g. methods that read and write.
-This will allow most of your code to use `str`.
-
-JSON
-----
-
-To send an object as json, use the `json` module to encode it before writing, and decode it after reading.
-Be sure to terminate the data in some way, so the reader knows when to stop reading.
-For example::
-
-    # Reading
-    read_bytes = client_or_server.readuntil(tcpip.TERMINATOR)
-    read_str.decode().strip()
-    read_object = json.loads(read_str)
-
-    # Writing
-    write_str = json.dumps(write_object)
-    write_bytes = write_str.encode() + tcpip.TERMINATOR
+The ``encoding`` and ``terminator`` constructor arguments allow you specify the desired encoding and terminator for these methods.
+The default encoding and terminator will work in many cases.
 
 Binary Structs
 --------------
@@ -106,7 +92,7 @@ In the examples below ``reader`` is an `asyncio.StreamReader` and ``writer`` is 
   For example::
 
     try:
-        data = reader.readuntil(tcpip.TERMINATOR) # or reader.read or reader.readline
+        data = reader.readuntil(tcpip.DEFAULT_TERMINATOR) # or reader.read or reader.readline
         # If data is empty then the connection is closed and reader.at_eof() will be True.
         # If there was unread data on the reader, then a partial result will be returned.
         # reader.at_eof() will be true if the result is partial.
