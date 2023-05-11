@@ -20,13 +20,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = [
+    "DEFAULT_ENCODING",
+    "DEFAULT_LOCALHOST",
     "DEFAULT_MONITOR_CONNECTION_INTERVAL",
+    "DEFAULT_TERMINATOR",
     "LOCALHOST_IPV4",
     "LOCALHOST_IPV6",
-    "LOCALHOST",
     "LOCAL_HOST",
     "TERMINATOR",
 ]
+
+# The default encoding for BaseClientOrServer and its subclasses.
+DEFAULT_ENCODING = "utf-8"
+
+# The default terminator for BaseClientOrServer and its subclasses (bytes).
+DEFAULT_TERMINATOR = b"\r\n"
 
 # Default interval between checks if the connection is alive (seconds)
 DEFAULT_MONITOR_CONNECTION_INTERVAL = 0.1
@@ -35,9 +43,9 @@ DEFAULT_MONITOR_CONNECTION_INTERVAL = 0.1
 LOCALHOST_IPV4 = "127.0.0.1"
 LOCALHOST_IPV6 = "::1"
 # The default localhost
-LOCALHOST = LOCALHOST_IPV4
-# Deprecated alias to LOCALHOST
-LOCAL_HOST = LOCALHOST
+DEFAULT_LOCALHOST = LOCALHOST_IPV4
+# Deprecated alias to DEFAULT_LOCALHOST
+LOCAL_HOST = DEFAULT_LOCALHOST
 
-# The standard TCP/IP line terminator (bytes)
-TERMINATOR = b"\r\n"
+# Deprecated; use DEFAULT_TERMINATOR, if you need anything.
+TERMINATOR = DEFAULT_TERMINATOR
