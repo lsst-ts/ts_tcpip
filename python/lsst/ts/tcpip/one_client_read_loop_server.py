@@ -27,6 +27,7 @@ import logging
 import typing
 
 from .base_client_or_server import ConnectCallbackType
+from .constants import DEFAULT_ENCODING, DEFAULT_TERMINATOR
 from .one_client_server import OneClientServer
 
 __all__ = ["OneClientReadLoopServer"]
@@ -59,6 +60,12 @@ class OneClientReadLoopServer(OneClientServer):
         The function receives one argument: this `OneClientServer`.
     name : `str`, optional
         Name used for log messages, e.g. "Commands" or "Telemetry".
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
@@ -78,6 +85,8 @@ class OneClientReadLoopServer(OneClientServer):
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         self.read_loop_task: asyncio.Future = asyncio.Future()
@@ -89,6 +98,8 @@ class OneClientReadLoopServer(OneClientServer):
             connect_callback=connect_callback,
             monitor_connection_interval=0,
             name=name,
+            encoding=encoding,
+            terminator=terminator,
             **kwargs,
         )
 

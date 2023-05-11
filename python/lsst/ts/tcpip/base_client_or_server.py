@@ -35,7 +35,11 @@ import typing
 import warnings
 
 from . import utils
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL, TERMINATOR
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MONITOR_CONNECTION_INTERVAL,
+    DEFAULT_TERMINATOR,
+)
 
 
 class BaseClientOrServer(abc.ABC):
@@ -68,6 +72,13 @@ class BaseClientOrServer(abc.ABC):
         using the read methods of this class.
     name : `str`
         Optional name used for log messages.
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+
     **kwargs : `dict` [`str`, `typing.Any`]
         Keyword arguments for start_task.
 
@@ -77,6 +88,10 @@ class BaseClientOrServer(abc.ABC):
         A child of the ``log`` constructor argument.
     name : `str`
         The ``name`` constructor argument.
+    encoding : `str`
+        The ``encoding`` constructor argument.
+    terminator : `bytes`
+        The ``terminator`` constructor argument.
     reader : `asyncio.StreamReader` or None
         Stream reader to read data from the server.
         This will be a stream reader (not None) if `connected` is True.
@@ -128,6 +143,8 @@ class BaseClientOrServer(abc.ABC):
         | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         if connect_callback is not None and not inspect.iscoroutinefunction(
@@ -138,11 +155,19 @@ class BaseClientOrServer(abc.ABC):
             warnings.warn(
                 "connect_callback should be asynchronous", category=DeprecationWarning
             )
+        if not isinstance(terminator, bytes):
+            raise ValueError(f"{terminator=!r} must be a bytes")
+        try:
+            " ".encode(encoding)
+        except Exception as e:
+            raise ValueError(f"{encoding=!r} is not a valid encoding: {e!r}")
 
         self.log = log.getChild(f"{type(self).__name__}({name})")
         self.__connect_callback = connect_callback
         self.monitor_connection_interval = monitor_connection_interval
         self.name = name
+        self.encoding = encoding
+        self.terminator = terminator
 
         # Has the connection been made and not closed at this end?
         self.should_be_connected = False
@@ -335,9 +360,8 @@ class BaseClientOrServer(abc.ABC):
     async def read_str(self) -> str:
         """Read and decode a terminated str; strip the terminator.
 
-        Read until `TERMINATOR`, strip the terminator and decode the data
-        as UTF-8. If you want a different terminator or a different
-        kind of decoding, override this method.
+        Read until ``self.terminator``, strip the terminator, and decode
+        the data as ``self.encoding`` with strict error handling.
 
         Returns
         -------
@@ -357,14 +381,14 @@ class BaseClientOrServer(abc.ABC):
         `UnicodeError`
             If decoding fails.
         """
-        data = await self.readuntil(TERMINATOR)
-        term_len = len(TERMINATOR)
-        return data[0:-term_len].decode(encoding="utf-8", errors="strict")
+        data = await self.readuntil(self.terminator)
+        term_len = len(self.terminator)
+        return data[0:-term_len].decode(encoding=self.encoding, errors="strict")
 
     async def read_json(self) -> typing.Any:
         """Read JSON data.
 
-        Before returning the data, it is decoded.
+        Read the data with `read_str` and return the json-decoded result.
 
         Returns
         -------
@@ -448,9 +472,8 @@ class BaseClientOrServer(abc.ABC):
     async def write_str(self, line: str) -> None:
         """Encode, terminate, and write a str.
 
-        Encode the str as UTF-8 and append `TERMINATOR`.
-        If you want a different kind of encoding or a different terminator,
-        override this method.
+        Encode the str as ``self.encoding`` with strict error handling,
+        and append ``self.terminator``.
 
         Parameters
         ----------
@@ -464,14 +487,13 @@ class BaseClientOrServer(abc.ABC):
         `UnicodeError`
             If encoding fails.
         """
-        data = line.encode(encoding="utf-8", errors="strict") + TERMINATOR
+        data = line.encode(encoding=self.encoding, errors="strict") + self.terminator
         await self.write(data)
 
     async def write_json(self, data: typing.Any) -> None:
         """Write data in JSON format.
 
-        Before writing, the data is encoded using JSON and the TERMINATOR is
-        appended.
+        Encode the data as json and write the result with `write_str`.
 
         Parameters
         ----------
