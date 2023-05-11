@@ -23,6 +23,7 @@ __all__ = [
     "DEFAULT_MONITOR_CONNECTION_INTERVAL",
     "LOCALHOST_IPV4",
     "LOCALHOST_IPV6",
+    "LOCALHOST",
     "LOCAL_HOST",
     "TERMINATOR",
 ]
@@ -30,10 +31,13 @@ __all__ = [
 # Default interval between checks if the connection is alive (seconds)
 DEFAULT_MONITOR_CONNECTION_INTERVAL = 0.1
 
-# localhost constants
+# localhost constants for IPV4 and IPV6
 LOCALHOST_IPV4 = "127.0.0.1"
 LOCALHOST_IPV6 = "::1"
-LOCAL_HOST = LOCALHOST_IPV4  # Deprecated
+# The default localhost
+LOCALHOST = LOCALHOST_IPV4
+# Deprecated alias to LOCALHOST
+LOCAL_HOST = LOCALHOST
 
 # The standard TCP/IP line terminator (bytes)
 TERMINATOR = b"\r\n"

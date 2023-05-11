@@ -84,24 +84,23 @@ class BaseClientOrServer(abc.ABC):
         Stream writer to write data to the server.
         This will be a stream writer (not None) if `connected` is True.
     start_task : `asyncio.Future`
-        Future that is set done when the connection is made.
+        Future that is set done when:
+
+        * The connection is made, for the `Client` subclass.
+        * The server is ready to receive connections, for Server subclasses.
+
     done_task : `asyncio.Future`
-        Future that is set done when this client is closed, at which point
-        it is no longer usable.
+        Future that is set done when this instance is closed, at which point
+        the instance is no longer usable.
     should_be_connected : `bool`
         This flag helps you determine if you unexpectedly lost the connection
         (e.g. if the other end hung up). It is set true when the connection
-        is made and false when you call `close`. The connection was
-        unexpectedly lost if `connected` is false and ``should_be_connected``
-        is true.
+        is made and false when you call `close`, or
+        `OneClientServer.close_client`. The connection was unexpectedy lost
+        if `connected` is false and ``should_be_connected`` is true.
 
         If your CSC unexpectedly loses its connection to a low-level
         controller, you should send the CSC to fault state.
-
-        In order for this test to work, you must close the writer using
-        `close`, instead of any other method (such as manually closing
-        ``writer`` or calling `Client.basic_close` or
-        `OneClientServer.basic_close_client`).
 
     Notes
     -----
@@ -116,7 +115,7 @@ class BaseClientOrServer(abc.ABC):
     for unit tests.
 
     Subclasses should call `_start_monitoring_connection` from the `start`
-    method.
+    method, if monitoring is needed.
     """
 
     def __init__(
@@ -334,15 +333,16 @@ class BaseClientOrServer(abc.ABC):
             raise
 
     async def read_str(self) -> str:
-        """Read data ending in `TERMINATOR`.
+        """Read and decode a terminated str; strip the terminator.
 
-        Before returning the data, the TERMINATOR is stripped and the data is
-        decoded into an UTF-8 string.
+        Read until `TERMINATOR`, strip the terminator and decode the data
+        as UTF-8. If you want a different terminator or a different
+        kind of decoding, override this method.
 
         Returns
         -------
-        str:
-            Data decoded into a string.
+        line : `str`
+            Line of data, as a str with the terminator stripped.
 
         Raises
         ------
@@ -364,11 +364,11 @@ class BaseClientOrServer(abc.ABC):
     async def read_json(self) -> typing.Any:
         """Read JSON data.
 
-        Before returning the data, it is decoded using JSON.
+        Before returning the data, it is decoded.
 
         Returns
         -------
-        str:
+        data : `typing.Any`
             Data decoded from JSON.
 
         Raises
@@ -446,10 +446,11 @@ class BaseClientOrServer(abc.ABC):
         await utils.write_from(self.writer, *structs)
 
     async def write_str(self, line: str) -> None:
-        """Write a string of data.
+        """Encode, terminate, and write a str.
 
-        Before writing, the data first gets UTF-8 encoded and the `TERMINATOR`
-        gets appended.
+        Encode the str as UTF-8 and append `TERMINATOR`.
+        If you want a different kind of encoding or a different terminator,
+        override this method.
 
         Parameters
         ----------

@@ -20,17 +20,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
-import contextlib
 import logging
 import socket
-import typing
 import unittest
 
 import pytest
 from lsst.ts import tcpip  # type: ignore
-
-# Standard timeout for TCP/IP messages (sec).
-TCP_TIMEOUT = 1
 
 # How long to wait for OneClientServer to detect
 # that a client has connected (sec).
@@ -70,126 +65,38 @@ async def is_reader_open(reader: asyncio.StreamReader) -> bool:
         return False
 
 
-class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
+class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
+    """Test OneClientServer and also BaseOneClientServerTestCase."""
+
+    server_class = tcpip.OneClientServer
+
     def setUp(self) -> None:
         self.callbacks_raise: bool = False
-        self.connect_queue: asyncio.Queue = asyncio.Queue()
-        self.log = logging.getLogger()
-
-    @contextlib.asynccontextmanager
-    async def make_server(
-        self,
-        host: str = tcpip.LOCALHOST_IPV4,
-        sync_callback: bool = False,
-        **kwargs: typing.Any,
-    ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
-        """Make a OneClientServer with a randomly chosen port.
-
-        Parameters
-        ----------
-        host : `str`
-            Host IP address
-        sync_callback : `bool`
-            Use self.sync_connect_callback as the connect callback?
-            TODO DM-37477: drop this argument when we remove support
-            for synchronous connect_callback functions.
-        **kwargs : `dict` [`str`, `typing.Any`]
-            Additional keyword arguments for OneClientServer
-
-        Returns
-        -------
-        server : `OneClientServer`
-            The server, with port assigned and ready to receive connections.
-        """
-        # Reset connect_queue so we can call make_server multiple times
-        # in one unit test.
-        self.connect_queue = asyncio.Queue()
-        if sync_callback:
-            connect_callback: typing.Callable[
-                [tcpip.OneClientServer], None | typing.Awaitable[None]
-            ] = self.sync_connect_callback
-        else:
-            connect_callback = self.connect_callback
-        async with tcpip.OneClientServer(
-            host=host,
-            port=0,
-            log=self.log,
-            connect_callback=connect_callback,
-            name="test",
-            **kwargs,
-        ) as server:
-            yield server
-
-    @contextlib.asynccontextmanager
-    async def make_client(
-        self,
-        server: tcpip.OneClientServer,
-        wait_connected: bool = True,
-        **kwargs: typing.Any,
-    ) -> typing.AsyncGenerator[
-        typing.Tuple[asyncio.StreamReader, asyncio.StreamWriter], None
-    ]:
-        """Make a TCP/IP client that talks to the server and wait for it to
-        connect.
-
-        Parameters
-        ----------
-        server : `OneClientServer`
-            The server to which to connect.
-        wait_connected : `bool`
-            Wait for the server to detect the connection before returning?
-        **kwargs : `dict` [`str`, `typing.Any`]
-            Additional keywords for `asyncio.open_connection`.
-
-        Returns
-        -------
-            reader_writer : `tuple`[`asyncio.StreamReader`,
-                    `asyncio.StreamWriter`]
-                The stream reader and writer.
-        """
-        (reader, writer) = await asyncio.open_connection(
-            host=server.host, port=server.port, **kwargs
-        )
-        try:
-            if wait_connected:
-                await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
-            yield (reader, writer)
-        finally:
-            writer.close()
-            await writer.wait_closed()
 
     async def connect_callback(self, server: tcpip.OneClientServer) -> None:
-        print(f"connect_callback: connected={server.connected}")
+        """This override of connect_callback raises RuntimeError
+        if self.callbacks_raise is true.
+        """
         if self.callbacks_raise:
             raise RuntimeError(
                 "connect_callback raising because self.callbacks_raise is true"
             )
-        self.connect_queue.put_nowait(server.connected)
+        await super().connect_callback(server)
 
     def sync_connect_callback(self, server: tcpip.OneClientServer) -> None:
+        """A synchronous version of connect_callback.
+
+        TODO DM-37477: drop this method argument when we remove support
+        for synchronous connect_callback functions.
+        """
         print(f"sync_connect_callback: connected={server.connected}")
+        if self.connect_queue is None:
+            raise RuntimeError("You must call create_server")
         if self.callbacks_raise:
             raise RuntimeError(
                 "connect_callback raising because self.callbacks_raise is true"
             )
         self.connect_queue.put_nowait(server.connected)
-
-    async def assert_next_connected(
-        self, connected: bool, timeout: int = TCP_TIMEOUT
-    ) -> None:
-        """Assert results of next connect_callback.
-
-        Parameters
-        ----------
-        connected : `bool`
-            Is a client connected to the server connected?
-        timeout : `float`
-            Time to wait for connect_callback (seconds).
-        """
-        next_connected = await asyncio.wait_for(
-            self.connect_queue.get(), timeout=timeout
-        )
-        assert connected == next_connected
 
     async def check_read_write(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -231,6 +138,11 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         finally:
             await server.close()
 
+    async def test_assert_next_connected_with_no_server(self) -> None:
+        for connected in (False, True):
+            with pytest.raises(RuntimeError):
+                await self.assert_next_connected(connected)
+
     async def test_port_0_not_started(self) -> None:
         """Test server.port is 0 until server started, then nonzero."""
         server = tcpip.OneClientServer(
@@ -248,35 +160,33 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_client(self) -> None:
         """Test OneClientServer.close_client"""
-        async with self.make_server() as server, self.make_client(server=server) as (
-            reader,
-            writer,
-        ):
+        async with self.create_server() as server, self.create_client(
+            server=server
+        ) as client:
             await self.assert_next_connected(True)
 
             await server.close_client()
             assert not (server.connected)
             await self.assert_next_connected(False)
-            assert reader.at_eof()
+            assert client.reader.at_eof()
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await reader.readuntil(tcpip.TERMINATOR)
+                await client.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
             await server.close_client()
 
     async def test_close(self) -> None:
         """Test OneClientServer.close"""
-        async with self.make_server() as server, self.make_client(server=server) as (
-            reader,
-            writer,
-        ):
+        async with self.create_server() as server, self.create_client(
+            server=server
+        ) as client:
             await self.assert_next_connected(True)
 
             await server.close()
             assert not (server.connected)
             await self.assert_next_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await reader.readuntil(tcpip.TERMINATOR)
+                await client.readuntil(tcpip.TERMINATOR)
 
             # Subsequent calls should have no effect
             await server.close_client()
@@ -284,37 +194,33 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
-        async with self.make_server() as server:
+        async with self.create_server() as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
-            async with self.make_client(server=server) as (
-                reader,
-                writer,
-            ):
+            async with self.create_client(server=server) as client:
                 assert server.connected
                 assert server.writer is not None
                 with pytest.raises(asyncio.TimeoutError):
                     await self.assert_next_connected(True)
-                await self.check_read_write(reader=server.reader, writer=writer)
-                await self.check_read_write(reader=reader, writer=server.writer)
+                await self.check_read_write(reader=server.reader, writer=client.writer)
+                await self.check_read_write(reader=client.reader, writer=server.writer)
 
     async def test_initial_conditions(self) -> None:
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
             assert server.port != 0
-            async with self.make_client(server=server):
+            async with self.create_client(server=server):
                 assert server.connected
                 await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
-        async with self.make_server() as server, self.make_client(server=server) as (
-            reader,
-            writer,
-        ):
+        async with self.create_server() as server, self.create_client(
+            server=server
+        ) as client:
             await self.assert_next_connected(True)
-            await self.check_read_write(reader=reader, writer=server.writer)
-            await self.check_read_write(reader=server.reader, writer=writer)
+            await self.check_read_write(reader=client.reader, writer=server.writer)
+            await self.check_read_write(reader=server.reader, writer=client.writer)
 
             # Create another client connection and check that it cannot read;
             # note that the client writer gives no hint of problems.
@@ -327,26 +233,23 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             finally:
                 await tcpip.close_stream_writer(bad_writer)
 
-            await self.check_read_write(reader=reader, writer=server.writer)
-            await self.check_read_write(reader=server.reader, writer=writer)
+            await self.check_read_write(reader=client.reader, writer=server.writer)
+            await self.check_read_write(reader=server.reader, writer=client.writer)
 
     async def test_reconnect(self) -> None:
-        async with self.make_server() as server:
-            async with self.make_client(server, wait_connected=False):
+        async with self.create_server() as server:
+            async with self.create_client(server, wait_connected=False):
                 await self.assert_next_connected(True)
 
             # Reconnect as quickly as possible, to make sure
             # we can reconnect before the monitoring loop notices
             # that the client has disconnected.
-            # (Leaving the make_client context closes the previous client).
-            async with self.make_client(server, wait_connected=False) as (
-                reader,
-                writer,
-            ):
+            # (Leaving the create_client context closes the previous client).
+            async with self.create_client(server, wait_connected=False) as client:
                 await self.assert_next_connected(False)
                 await self.assert_next_connected(True)
-                await self.check_read_write(reader=reader, writer=server.writer)
-                await self.check_read_write(reader=server.reader, writer=writer)
+                await self.check_read_write(reader=client.reader, writer=server.writer)
+                await self.check_read_write(reader=server.reader, writer=client.writer)
 
                 # Give the monitor plenty of time to run and make sure
                 # it has not called the connection_callback.
@@ -354,25 +257,26 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 assert self.connect_queue.empty()
 
             # Test reconnect after connection monitor notices.
-            # (Leaving the make_client context closes the previous client).
+            # (Leaving the create_client context closes the previous client).
             await self.assert_next_connected(False)
-            async with self.make_client(server=server) as (reader, writer):
+            async with self.create_client(server=server) as client:
                 await self.assert_next_connected(True)
-                await self.check_read_write(reader=reader, writer=server.writer)
-                await self.check_read_write(reader=server.reader, writer=writer)
+                await self.check_read_write(reader=client.reader, writer=server.writer)
+                await self.check_read_write(reader=server.reader, writer=client.writer)
 
     async def test_read_write(self) -> None:
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
             with self.subTest(localhost=localhost):
                 try:
-                    async with self.make_server(
+                    async with self.create_server(
                         host=localhost
-                    ) as server, self.make_client(server) as (
-                        reader,
-                        writer,
-                    ):
-                        await self.check_read_write(reader=reader, writer=server.writer)
-                        await self.check_read_write(reader=server.reader, writer=writer)
+                    ) as server, self.create_client(server) as client:
+                        await self.check_read_write(
+                            reader=client.reader, writer=server.writer
+                        )
+                        await self.check_read_write(
+                            reader=server.reader, writer=client.writer
+                        )
                 except OSError:
                     if localhost == tcpip.LOCALHOST_IPV6:
                         raise unittest.SkipTest(
@@ -382,13 +286,13 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                         raise
 
     # TODO DM-37477: modify this test to expect a TypeError (and construct
-    # the OneClientServer directly, instead of calling make_server)
+    # the OneClientServer directly, instead of calling create_server)
     # once we drop support for sync connect_callback
     async def test_sync_connect_callback(self) -> None:
         with pytest.warns(DeprecationWarning):
-            async with self.make_server(sync_callback=True) as server, self.make_client(
-                server
-            ):
+            async with self.create_server(
+                connect_callback=self.sync_connect_callback
+            ) as server, self.create_client(server):
                 await self.assert_next_connected(True)
 
     async def test_simultaneous_clients(self) -> None:
@@ -397,7 +301,7 @@ class OneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         One should connect and the others should be disconnected.
         """
         num_clients = 5
-        async with self.make_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
 
             async def open_connection() -> tuple[
                 asyncio.StreamReader, asyncio.StreamWriter

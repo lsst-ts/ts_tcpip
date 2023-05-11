@@ -40,11 +40,13 @@ class OneClientServer(BaseClientOrServer):
     Parameters
     ----------
     host : `str` or `None`
-        IP address for this server; typically `LOCALHOST_IPV4` for IPV4
-        or `LOCALHOST_IPV6` for IPV6. If `None` then bind to all network
-        interfaces (e.g. listen on an IPv4 socket and an IPv6 socket).
-        None can cause trouble with port=0;
-        see ``port`` in the Attributes section for more information.
+        IP address for this server; typically `LOCALHOST` to get
+        the default version of IP, or `LOCALHOST_IPV4` for IPV4,
+        or `LOCALHOST_IPV6` for IPV6.
+        If `None` then bind to all network interfaces
+        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        Warning: `None` can cause trouble with ``port=0``; see ``port``
+        in the Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
@@ -72,6 +74,8 @@ class OneClientServer(BaseClientOrServer):
 
     Attributes
     ----------
+    host : `str` | `None`
+        IP address; the ``host`` constructor argument.
     port : `int`
         The port on which this server is running.
 
@@ -90,32 +94,13 @@ class OneClientServer(BaseClientOrServer):
 
         An alternative that allows host=None is to specify family as
         `socket.AF_INET` for IPv4, or `socket.AF_INET6` for IPv6.
-    socket : `asyncio.AbstractServer` or None
-        The socket server. None until start_task is done.
-    reader : `asyncio.StreamReader` or None
-        Stream reader to read data from the client.
-        This will be a stream reader (not None) if `connected` is True.
-    writer : `asyncio.StreamWriter` or None
-        Stream writer to write data to the client.
-        This will be a stream writer (not None) if `connected` is True.
-    start_task : `asyncio.Future`
-        Future that is set done when the socket server has started running
-        and listening for connections.
     connected_task : `asyncio.Future`
         Future that is set done when a client connects.
         You may set replace it with a new `asyncio.Future`
         if you want to detect when another connection is made
         after the current client disconnects.
-    done_task : `asyncio.Future`
-        Future that is set done when this server is closed, at which point
-        it is no longer usable.
-
-    Warnings
-    --------
-    If you specify port=0 and host=None then it is not safe to rely on
-    the `port` property to give you the port, because the server is likely
-    to be listening on more than one socket, each with its own different port.
-    You can inspect `server.sockets` to obtain the necessary information.
+    plus...
+        Attributes provided by parent class `BaseClientOrServer`.
 
     Notes
     -----
