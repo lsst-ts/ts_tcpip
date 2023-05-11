@@ -106,6 +106,7 @@ class Client(BaseClientOrServer):
 
     def __init__(
         self,
+        *,
         host: str | None,
         port: int | None,
         log: logging.Logger,

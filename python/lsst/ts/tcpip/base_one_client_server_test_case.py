@@ -27,7 +27,7 @@ from typing import Any, AsyncGenerator, Literal
 
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
 from .client import Client
-from .constants import LOCALHOST
+from .constants import DEFAULT_LOCALHOST
 from .one_client_server import OneClientServer
 
 __all__ = ["BaseOneClientServerTestCase"]
@@ -97,8 +97,9 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     @contextlib.asynccontextmanager
     async def create_server(
         self,
-        host: str = LOCALHOST,
+        *,
         port: int = 0,
+        host: str = DEFAULT_LOCALHOST,
         connect_callback: ConnectCallbackType | None | Literal[True] = True,
         name: str = "",
         **kwargs: Any,
@@ -107,10 +108,10 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
         Parameters
         ----------
-        host : `str`, optional
-            IP host address of server. Defaults to `LOCALHOST`.
         port : `int`, optional
             IP port; 0 (the default) to pick a random available port.
+        host : `str`, optional
+            IP host address of server. Defaults to `DEFAULT_LOCALHOST`.
         connect_callback : callable or `None` or `True`, optional
             Asynchronous or (deprecated) synchronous function to call when
             when a client connects or disconnects.
@@ -148,7 +149,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def create_client(
-        self, server: OneClientServer, wait_connected: bool = True, **kwargs: Any
+        self, server: OneClientServer, *, wait_connected: bool = True, **kwargs: Any
     ) -> AsyncGenerator[Client, None]:
         """Make a TCP/IP client that talks to server.
 

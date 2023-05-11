@@ -31,6 +31,7 @@ from . import utils
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
 from .constants import (
     DEFAULT_ENCODING,
+    DEFAULT_LOCALHOST,
     DEFAULT_MONITOR_CONNECTION_INTERVAL,
     DEFAULT_TERMINATOR,
 )
@@ -43,18 +44,17 @@ class OneClientServer(BaseClientOrServer):
 
     Parameters
     ----------
-    host : `str` or `None`
-        IP address for this server; typically `LOCALHOST` to get
-        the default version of IP, or `LOCALHOST_IPV4` for IPV4,
-        or `LOCALHOST_IPV6` for IPV6.
-        If `None` then bind to all network interfaces
-        (e.g. listen on an IPv4 socket and an IPv6 socket).
-        Warning: `None` can cause trouble with ``port=0``; see ``port``
-        in the Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
         0 is strongly recommended for unit tests.
+    host : `str` or `None`
+        IP address for this server. The default is `DEFAULT_LOCALHOST`.
+        Specify `LOCALHOST_IPV4` to force IPV4 or `LOCALHOST_IPV6` for IPV6.
+        If `None` then bind to all network interfaces
+        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        Warning: `None` can cause trouble with ``port=0``; see ``port``
+        in the Attributes section for more information.
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
@@ -132,8 +132,9 @@ class OneClientServer(BaseClientOrServer):
 
     def __init__(
         self,
-        host: str | None,
+        *,
         port: int | None,
+        host: str | None = DEFAULT_LOCALHOST,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
