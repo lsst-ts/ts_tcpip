@@ -22,6 +22,7 @@
 import asyncio
 import contextlib
 import ctypes
+import itertools
 import logging
 import typing
 import unittest
@@ -207,15 +208,55 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         for field_name, c_type in read_struct._fields_:
             assert getattr(read_struct, field_name) == getattr(write_struct, field_name)
 
-        write_str = "data with unicode \U0001F600 for read_str"
-        await writer.write_str(write_str)
-        read_str = await asyncio.wait_for(reader.read_str(), timeout=TCP_TIMEOUT)
-        assert read_str == write_str
+        assert reader.encoding == writer.encoding
+        assert reader.terminator == writer.terminator
+        initial_encoding = reader.encoding
+        initial_terminator = reader.terminator
 
-        write_json = {"msg": "data with unicode \U0001F600 for read_json"}
-        await writer.write_json(write_json)
-        read_json = await asyncio.wait_for(reader.read_json(), timeout=TCP_TIMEOUT)
-        assert read_json == write_json
+        try:
+            for encoding, terminator in itertools.product(
+                ("utf-8", "utf-16", "utf-32"),
+                (b"\r\n", b"\n", b"\n\r", b"XYZZY"),
+            ):
+                with self.subTest(encoding=encoding, terminator=terminator):
+                    reader.encoding = encoding
+                    reader.terminator = terminator
+                    writer.encoding = encoding
+                    writer.terminator = terminator
+
+                    write_str = "data with unicode \U0001F600 for read_str"
+                    await writer.write_str(write_str)
+                    read_str = await asyncio.wait_for(
+                        reader.read_str(), timeout=TCP_TIMEOUT
+                    )
+                    assert read_str == write_str
+
+                    # Make sure the reader and writer are truly using
+                    # the desired encoding and terminator.
+                    write_bytes = write_str.encode(encoding) + terminator
+                    await writer.write(write_bytes)
+                    read_str = await asyncio.wait_for(
+                        reader.read_str(), timeout=TCP_TIMEOUT
+                    )
+                    assert read_str == write_str
+
+                    await writer.write_str(write_str)
+                    read_bytes = await asyncio.wait_for(
+                        reader.readuntil(terminator), timeout=TCP_TIMEOUT
+                    )
+                    assert read_bytes == write_bytes
+
+                    write_json = {"msg": "data with unicode \U0001F600 for read_json"}
+                    await writer.write_json(write_json)
+                    read_json = await asyncio.wait_for(
+                        reader.read_json(), timeout=TCP_TIMEOUT
+                    )
+                    assert read_json == write_json
+        finally:
+            reader.encoding = initial_encoding
+            writer.encoding = initial_encoding
+            reader.terminator = initial_terminator
+            writer.terminator = initial_terminator
 
     async def test_basic_close(self) -> None:
         async with self.create_server() as server, self.create_client(server) as client:
@@ -306,3 +347,45 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
                     log=self.log,
                     connect_callback=sync_callback,
                 )
+
+    async def test_encodings_and_terminators(self) -> None:
+        """Test encoding and terminator constructor arguments.
+
+        The actual encoding and decoding is tested in check_read_write_methods.
+        """
+        async with self.create_server() as server:
+            for good_encoding in ("utf-8", "utf_8", "utf-16", "UTF-32"):
+                async with tcpip.Client(
+                    host=server.host,
+                    port=server.port,
+                    log=self.log,
+                    encoding=good_encoding,
+                ) as client:
+                    assert client.encoding == good_encoding
+
+            for good_terminator in (b"\r\n", b"\r", b"any bytes"):
+                async with tcpip.Client(
+                    host=server.host,
+                    port=server.port,
+                    log=self.log,
+                    terminator=good_terminator,
+                ) as client:
+                    assert client.terminator == good_terminator
+
+            for bad_encoding in ("no_such_encoder", b"utf_8"):
+                with pytest.raises(ValueError):
+                    tcpip.Client(
+                        host=server.host,
+                        port=server.port,
+                        log=self.log,
+                        encoding=bad_encoding,
+                    )
+
+            for bad_terminator in ("\r\n", "any str"):
+                with pytest.raises(ValueError):
+                    tcpip.Client(
+                        host=server.host,
+                        port=server.port,
+                        log=self.log,
+                        terminator=bad_terminator,
+                    )

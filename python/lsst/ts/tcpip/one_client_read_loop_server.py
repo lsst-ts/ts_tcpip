@@ -27,6 +27,7 @@ import logging
 import typing
 
 from .base_client_or_server import ConnectCallbackType
+from .constants import DEFAULT_ENCODING, DEFAULT_LOCALHOST, DEFAULT_TERMINATOR
 from .one_client_server import OneClientServer
 
 __all__ = ["OneClientReadLoopServer"]
@@ -37,18 +38,17 @@ class OneClientReadLoopServer(OneClientServer):
 
     Parameters
     ----------
-    host : `str` or `None`
-        IP address for this server; typically `LOCALHOST` to get
-        the default version of IP, or `LOCALHOST_IPV4` for IPV4,
-        or `LOCALHOST_IPV6` for IPV6.
-        If `None` then bind to all network interfaces
-        (e.g. listen on an IPv4 socket and an IPv6 socket).
-        Warning: `None` can cause trouble with ``port=0``; see ``port``
-        in the `OneClientServer` Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
         0 is strongly recommended for unit tests.
+    host : `str` or `None`
+        IP address for this server. The default is `DEFAULT_LOCALHOST`.
+        Specify `LOCALHOST_IPV4` to force IPV4 or `LOCALHOST_IPV6` for IPV6.
+        If `None` then bind to all network interfaces
+        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        Warning: `None` can cause trouble with ``port=0``; see ``port``
+        in the Attributes section for more information.
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
@@ -59,6 +59,12 @@ class OneClientReadLoopServer(OneClientServer):
         The function receives one argument: this `OneClientServer`.
     name : `str`, optional
         Name used for log messages, e.g. "Commands" or "Telemetry".
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
@@ -73,11 +79,14 @@ class OneClientReadLoopServer(OneClientServer):
 
     def __init__(
         self,
-        host: str | None,
+        *,
         port: int | None,
+        host: str | None = DEFAULT_LOCALHOST,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         self.read_loop_task: asyncio.Future = asyncio.Future()
@@ -89,6 +98,8 @@ class OneClientReadLoopServer(OneClientServer):
             connect_callback=connect_callback,
             monitor_connection_interval=0,
             name=name,
+            encoding=encoding,
+            terminator=terminator,
             **kwargs,
         )
 

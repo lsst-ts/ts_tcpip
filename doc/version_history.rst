@@ -10,10 +10,20 @@ v1.1.0
 ------
 
 * Add `OneClientReadLoopServer`: an abstract subclass of `OneClientServer` that includes a read loop.
-* `BaseClientOrServer`: add read_str, write_str, read_json and write_json methods.
+* `BaseClientOrServer`: add ``read_str``, ``write_str``, ``read_json`` and ``write_json`` methods.
+* `BaseClientOrServer` and subclasses:
+
+    * Add optional ``encoding`` and ``terminator`` constructor arguments.
+    * Make constructor arguments keyword-only.
+
 * Add ``BaseOneClientServerTestCase``: a base clase for unit tests of `OneClientServer` and subclasses.
-* Add new constant ``LOCALHOST`` which is the same as deprecated ``LOCAL_HOST``.
-  This uses the default version of TCP/IP (IPV4 at this time).
+* Add new constants:
+
+    * ``DEFAULT_LOCALHOST``, the same as deprecated ``LOCAL_HOST``
+    * ``DEFAULT_TERMINATOR``, the same as deprecated ``TERMINATOR``.
+    * ``DEFAULT_ENCODING``.
+
+* `OneClientServer` and subclasses: make the default host ``DEFAULT_LOCALHOST``.
 * Improve class documentation.
 * Use ts_pre_commit_conf.
 * Remove scons support.

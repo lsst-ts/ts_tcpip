@@ -29,7 +29,11 @@ import logging
 import typing
 
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MONITOR_CONNECTION_INTERVAL,
+    DEFAULT_TERMINATOR,
+)
 
 
 class Client(BaseClientOrServer):
@@ -61,6 +65,12 @@ class Client(BaseClientOrServer):
         to detect and report hangups).
     name : `str`
         Optional name used for log messages.
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.open_connection`,
         beyond host and port.
@@ -96,12 +106,15 @@ class Client(BaseClientOrServer):
 
     def __init__(
         self,
+        *,
         host: str | None,
         port: int | None,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         # TODO DM-37477: delete this test and let the base class handle it
@@ -118,6 +131,8 @@ class Client(BaseClientOrServer):
             connect_callback=connect_callback,
             monitor_connection_interval=monitor_connection_interval,
             name=name,
+            encoding=encoding,
+            terminator=terminator,
             **kwargs,
         )
 
