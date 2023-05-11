@@ -191,11 +191,11 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         write_bytes = (
             b"terminated data with unicode \xf0\x9f\x98\x80 for readuntil"
-            + tcpip.TERMINATOR
+            + tcpip.DEFAULT_TERMINATOR
         )
         await writer.write(write_bytes)
         read_bytes = await asyncio.wait_for(
-            reader.readuntil(tcpip.TERMINATOR), timeout=TCP_TIMEOUT
+            reader.readuntil(tcpip.DEFAULT_TERMINATOR), timeout=TCP_TIMEOUT
         )
         assert read_bytes == write_bytes
 
@@ -267,7 +267,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             assert client.should_be_connected
             await self.assert_next_client_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readuntil(tcpip.TERMINATOR)
+                await client.reader.readline()
 
     async def test_close(self) -> None:
         """Test Client.close"""
@@ -279,7 +279,7 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             assert not client.should_be_connected
             await self.assert_next_client_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readuntil(tcpip.TERMINATOR)
+                await client.reader.readline()
 
             # Subsequent calls should have no effect
             await client.close()
