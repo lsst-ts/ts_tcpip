@@ -304,12 +304,21 @@ class BaseClientOrServer(abc.ABC):
             raise
 
     async def readuntil(self, separator: bytes = b"\n") -> bytes:
-        """Read one line, where “line” is a sequence of bytes ending with \n.
+        """Read one line, where “line” is a sequence of bytes ending with
+        ``separator``.
 
         Read data from the stream until separator is found.
 
         On success, the data and separator will be removed from the internal
         buffer (consumed). Returned data will include the separator at the end.
+
+        See also `read_str`, which is more convenient for most use cases.
+
+        Parameters
+        ----------
+        separator : `bytes`
+            The desired separator. The default matches the standard library,
+            rather than using ``terminator``.
 
         Raises
         ------
