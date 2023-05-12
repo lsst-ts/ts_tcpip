@@ -121,7 +121,6 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             host=None,
             port=0,
             log=self.log,
-            connect_callback=None,
             family=socket.AF_UNSPEC,
         )
         try:
@@ -144,10 +143,8 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
     async def test_port_0_not_started(self) -> None:
         """Test server.port is 0 until server started, then nonzero."""
         server = tcpip.OneClientServer(
-            host=tcpip.LOCALHOST_IPV4,
             port=0,
             log=self.log,
-            connect_callback=None,
         )
         try:
             assert server.port == 0
@@ -158,9 +155,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_close_client(self) -> None:
         """Test OneClientServer.close_client"""
-        async with self.create_server() as server, self.create_client(
-            server=server
-        ) as client:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
 
             await server.close_client()
@@ -175,9 +172,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_close(self) -> None:
         """Test OneClientServer.close"""
-        async with self.create_server() as server, self.create_client(
-            server=server
-        ) as client:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
 
             await server.close()
@@ -192,7 +189,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
-        async with self.create_server() as server:
+        async with self.create_server(connect_callback=self.connect_callback) as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
             async with self.create_client(server=server) as client:
@@ -204,7 +201,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                 await self.check_read_write(reader=client, writer=server)
 
     async def test_initial_conditions(self) -> None:
-        async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
+        async with self.create_server(connect_callback=self.connect_callback) as server:
             assert not (server.connected)
             assert self.connect_queue.empty()
             assert server.port != 0
@@ -213,9 +210,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                 await self.assert_next_connected(True)
 
     async def test_only_one_client(self) -> None:
-        async with self.create_server() as server, self.create_client(
-            server=server
-        ) as client:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
             await self.check_read_write(reader=client, writer=server)
             await self.check_read_write(reader=server, writer=client)
@@ -235,7 +232,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             await self.check_read_write(reader=server, writer=client)
 
     async def test_reconnect(self) -> None:
-        async with self.create_server() as server:
+        async with self.create_server(connect_callback=self.connect_callback) as server:
             async with self.create_client(server, wait_connected=False):
                 await self.assert_next_connected(True)
 

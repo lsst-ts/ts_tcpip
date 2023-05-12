@@ -23,11 +23,10 @@ import asyncio
 import contextlib
 import logging
 import unittest
-from typing import Any, AsyncGenerator, Literal
+from typing import Any, AsyncGenerator
 
-from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
+from .base_client_or_server import BaseClientOrServer
 from .client import Client
-from .constants import DEFAULT_LOCALHOST
 from .one_client_server import OneClientServer
 
 __all__ = ["BaseOneClientServerTestCase"]
@@ -59,6 +58,14 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         self, connected: bool, timeout: int = STD_TIMEOUT
     ) -> None:
         """Assert results of next connect_callback.
+
+        This only works if you specify:
+
+            ``connect_callback=self.connect_callback``
+
+        when calling `create_server` or `create_client` (preferably not both,
+        as you will get entries for each). Note that `create_server` clears
+        the underlying queue, but `create_client` does not.
 
         Parameters
         ----------
@@ -97,32 +104,15 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
     @contextlib.asynccontextmanager
     async def create_server(
         self,
-        *,
-        port: int = 0,
-        host: str = DEFAULT_LOCALHOST,
-        connect_callback: ConnectCallbackType | None | Literal[True] = True,
-        name: str = "",
         **kwargs: Any,
     ) -> AsyncGenerator[OneClientServer, None]:
         """Create a server of the class being tested.
 
         Parameters
         ----------
-        port : `int`, optional
-            IP port; 0 (the default) to pick a random available port.
-        host : `str`, optional
-            IP host address of server. Defaults to `DEFAULT_LOCALHOST`.
-        connect_callback : callable or `None` or `True`, optional
-            Asynchronous or (deprecated) synchronous function to call when
-            when a client connects or disconnects.
-            If `True` (the default): call self.connect_callback.
-            If `None`: no callback.
-            The function receives one argument: this `OneClientServer`.
-        name : `str`, optional
-            Name used for log messages, e.g. "Commands" or "Telemetry".
         **kwargs : `dict` [`str`, `Any`]
-            Additional keywords for the server constructor.
-            Must not include log.
+            Keywords for the server constructor.
+            Must not include port or log.
 
         Raises
         ------
@@ -135,16 +125,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
                 "You must set class variable server_class to OneClientServer or a subclass"
             )
         self.connect_queue = asyncio.Queue()
-        if connect_callback is True:
-            connect_callback = self.connect_callback
-        async with self.server_class(
-            host=host,
-            port=port,
-            log=self.log,
-            connect_callback=connect_callback,
-            name=name,
-            **kwargs,
-        ) as server:
+        async with self.server_class(port=0, log=self.log, **kwargs) as server:
             yield server  # type: ignore # mypy bug?
 
     @contextlib.asynccontextmanager
