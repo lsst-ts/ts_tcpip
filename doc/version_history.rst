@@ -16,14 +16,19 @@ v1.1.0
     * Add optional ``encoding`` and ``terminator`` constructor arguments.
     * Make constructor arguments keyword-only.
 
-* Add ``BaseOneClientServerTestCase``: a base clase for unit tests of `OneClientServer` and subclasses.
+* Add `BaseOneClientServerTestCase`: a base clase for unit tests of `OneClientServer` and subclasses.
 * Add new constants:
 
     * ``DEFAULT_LOCALHOST``, the same as deprecated ``LOCAL_HOST``
     * ``DEFAULT_TERMINATOR``, the same as deprecated ``TERMINATOR``.
     * ``DEFAULT_ENCODING``.
 
-* `OneClientServer` and subclasses: make the default host ``DEFAULT_LOCALHOST``.
+* `Client` Fix setting ``done_task`` done.
+* `OneClientServer` and subclasses:
+
+    * Provide a default for the ``host`` constructor argument: ``DEFAULT_LOCALHOST``.
+    * Fix setting ``done_task`` done.
+
 * Improve class documentation.
 * Use ts_pre_commit_conf.
 * Remove scons support.
@@ -31,8 +36,8 @@ v1.1.0
 v1.0.1
 ------
 
-* pre-commit: update black to 23.1.0, isort to 5.12.0, mypy to 1.0.0, and pre-commit-hooks to v4.4.0.p
-* ``Jenkinsfile``: modernize do not run as root.
+* pre-commit: update black to 23.1.0, isort to 5.12.0, mypy to 1.0.0, and pre-commit-hooks to v4.4.0.
+* ``Jenkinsfile``: do not run as root.
 
 v1.0.0
 ------
