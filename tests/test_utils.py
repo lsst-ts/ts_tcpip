@@ -155,7 +155,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_close_stream_writer(self) -> None:
         assert self.writer is not None
-        assert not (self.writer.is_closing())
+        assert not self.writer.is_closing()
         await tcpip.close_stream_writer(self.writer)
         assert self.writer.is_closing()
         await tcpip.close_stream_writer(self.writer)

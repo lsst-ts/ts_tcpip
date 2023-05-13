@@ -161,7 +161,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             await self.assert_next_connected(True)
 
             await server.close_client()
-            assert not (server.connected)
+            assert not server.connected
+            # Closing the client should not set done_task done.
+            assert not server.done_task.done()
             await self.assert_next_connected(False)
             assert client.reader.at_eof()
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
@@ -176,9 +178,11 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             connect_callback=self.connect_callback
         ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
+            assert not server.done_task.done()
 
             await server.close()
-            assert not (server.connected)
+            assert not server.connected
+            assert server.done_task.done()
             await self.assert_next_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.readline()
@@ -190,7 +194,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
         async with self.create_server(connect_callback=self.connect_callback) as server:
-            assert not (server.connected)
+            assert not server.connected
             assert self.connect_queue.empty()
             async with self.create_client(server=server) as client:
                 assert server.connected
@@ -202,7 +206,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_initial_conditions(self) -> None:
         async with self.create_server(connect_callback=self.connect_callback) as server:
-            assert not (server.connected)
+            assert not server.connected
             assert self.connect_queue.empty()
             assert server.port != 0
             async with self.create_client(server=server):

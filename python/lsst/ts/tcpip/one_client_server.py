@@ -235,17 +235,22 @@ class OneClientServer(BaseClientOrServer):
         Always safe to call.
         """
         try:
-            self.log.info("Closing the server.")
-            if self._server is not None:
-                # Close the asyncio.Server
-                self._server.close()
-                await self._server.wait_closed()
-            await self.close_client()
-        except Exception:
-            self.log.exception("close failed; continuing")
+            try:
+                if self._server is not None:
+                    self.log.info("Closing the server.")
+                    server = self._server
+                    self._server = None
+                    server.close()
+                    await server.wait_closed()
+            except Exception:
+                self.log.exception("close failed to close server; continuing")
+            try:
+                await self.close_client()
+            except Exception:
+                self.log.exception("close failed to close client; continuing")
         finally:
             self._monitor_connection_task.cancel()
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def _monitor_connection(self) -> None:

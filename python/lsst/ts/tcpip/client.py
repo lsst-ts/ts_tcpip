@@ -146,7 +146,7 @@ class Client(BaseClientOrServer):
         try:
             await self._close_client()
         finally:
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def close(self) -> None:

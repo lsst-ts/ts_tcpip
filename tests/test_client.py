@@ -222,10 +222,12 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
             server, connect_callback=self.connect_callback
         ) as client:
             await self.assert_next_connected(True)
+            assert not client.done_task.done()
 
             await asyncio.wait_for(client.basic_close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert client.should_be_connected
+            assert client.done_task.done()
             await self.assert_next_connected(False)
             await self.check_read_write_not_connected(client)
 
@@ -235,10 +237,12 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
             server, connect_callback=self.connect_callback
         ) as client:
             await self.assert_next_connected(True)
+            assert not client.done_task.done()
 
             await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert not client.should_be_connected
+            assert client.done_task.done()
             await self.assert_next_connected(False)
             await self.check_read_write_not_connected(client)
 
