@@ -9,10 +9,13 @@ Version History
 v1.1.0
 ------
 
+* Deprecation warning: do not access the ``reader``, ``writer``, or (in the case of `OneClientServer`) ``server`` attributes.
+  Use the provided read and write methods, instead, and let `OneClientServer` manage its asyncio server.
 * Add `OneClientReadLoopServer`: an abstract subclass of `OneClientServer` that includes a read loop.
 * `BaseClientOrServer`: add ``read_str``, ``write_str``, ``read_json`` and ``write_json`` methods.
 * `BaseClientOrServer` and subclasses:
 
+      This also applies to the `Client` and `OneClientServer` subclasses.
     * Add optional ``encoding`` and ``terminator`` constructor arguments.
     * Make constructor arguments keyword-only.
 
@@ -23,7 +26,8 @@ v1.1.0
     * ``DEFAULT_TERMINATOR``, the same as deprecated ``TERMINATOR``.
     * ``DEFAULT_ENCODING``.
 
-* `Client` Fix setting ``done_task`` done.
+* `Client`: fix setting ``done_task`` done.
+
 * `OneClientServer` and subclasses:
 
     * Provide a default for the ``host`` constructor argument: ``DEFAULT_LOCALHOST``.
