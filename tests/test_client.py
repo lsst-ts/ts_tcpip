@@ -88,7 +88,8 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
 
         # Check that StreamReader.readline reads 0 bytes if disconnected
         assert (
-            await asyncio.wait_for(client.reader.readline(), timeout=TCP_TIMEOUT) == b""
+            await asyncio.wait_for(client._reader.readline(), timeout=TCP_TIMEOUT)
+            == b""
         )
 
     async def assert_next_connected(
@@ -111,6 +112,16 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
     async def check_read_write_methods(
         self, reader: tcpip.BaseClientOrServer, writer: tcpip.BaseClientOrServer
     ) -> None:
+        """Check read and write methods by writing from one client or server
+        and reading from the opposite.
+
+        Parameters
+        ----------
+        reader : `tcpip.BaseClientOrServer`
+            Server or client.
+        writer : `tcpip.BaseClientOrServer`
+            Client (if reader is a server) or server (if reader is a client).
+        """
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n=len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
@@ -238,11 +249,19 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         ) as client:
             await self.assert_next_connected(True)
             assert not client.done_task.done()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert client.reader is not None
+            with pytest.warns(DeprecationWarning):
+                assert client.writer is not None
 
             await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert not client.should_be_connected
             assert client.done_task.done()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert client.writer is None
             await self.assert_next_connected(False)
             await self.check_read_write_not_connected(client)
 

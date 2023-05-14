@@ -159,13 +159,25 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             connect_callback=self.connect_callback
         ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert server.reader is not None
+            with pytest.warns(DeprecationWarning):
+                assert server.writer is not None
+            with pytest.warns(DeprecationWarning):
+                assert server.server is not None
 
             await server.close_client()
             assert not server.connected
             # Closing the client should not set done_task done.
             assert not server.done_task.done()
             await self.assert_next_connected(False)
-            assert client.reader.at_eof()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert server.writer is None
+            with pytest.warns(DeprecationWarning):
+                assert server.server is not None
+            assert client._reader.at_eof()
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.readline()
 
@@ -183,6 +195,11 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             await server.close()
             assert not server.connected
             assert server.done_task.done()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert server.writer is None
+            with pytest.warns(DeprecationWarning):
+                assert server.server is None
             await self.assert_next_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.readline()
@@ -198,7 +215,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             assert self.connect_queue.empty()
             async with self.create_client(server=server) as client:
                 assert server.connected
-                assert server.writer is not None
+                assert server._writer is not None
                 with pytest.raises(asyncio.TimeoutError):
                     await self.assert_next_connected(True)
                 await self.check_read_write(reader=server, writer=client)

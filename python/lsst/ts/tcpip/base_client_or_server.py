@@ -180,8 +180,8 @@ class BaseClientOrServer(abc.ABC):
         self._monitor_connection_task: asyncio.Future = asyncio.Future()
         self._monitor_connection_task.set_result(None)
 
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
 
         # Task which is set done when client connects.
         self.start_task: asyncio.Future = asyncio.create_task(self.start(**kwargs))
@@ -191,7 +191,7 @@ class BaseClientOrServer(abc.ABC):
 
     @property
     def connected(self) -> bool:
-        """Return True if self.reader and self.writer are connected.
+        """Return True if self._reader and self._writer are connected.
 
         Note: if the other end drops the connection and if you are not trying
         to read data (e.g. in a background loop), then it takes the operating
@@ -199,11 +199,37 @@ class BaseClientOrServer(abc.ABC):
         true for some unknown time after the connection has been dropped.
         """
         return not (
-            self.reader is None
-            or self.writer is None
-            or self.reader.at_eof()
-            or self.writer.is_closing()
+            self._reader is None
+            or self._writer is None
+            or self._reader.at_eof()
+            or self._writer.is_closing()
         )
+
+    # TODO DM-39202: remove this property.
+    @property
+    def reader(self) -> asyncio.StreamReader | None:
+        """Deprecated access to the underlying stream reader.
+
+        Use this classes' read methods instead.
+        """
+        warnings.warn(
+            "Accessing the writer directly is deprecated; use write methods instead.",
+            DeprecationWarning,
+        )
+        return self._reader
+
+    # TODO DM-39202: remove this property.
+    @property
+    def writer(self) -> asyncio.StreamWriter | None:
+        """Deprecated access to the underlying stream writer.
+
+        Use this classes' write methods instead.
+        """
+        warnings.warn(
+            "Accessing the writer directly is deprecated; use write methods instead.",
+            DeprecationWarning,
+        )
+        return self._writer
 
     async def call_connect_callback(self) -> None:
         """Call self.__connect_callback.
@@ -250,9 +276,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.read(n)
+            return await self._reader.read(n)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -276,9 +302,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readexactly(n)
+            return await self._reader.readexactly(n)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -296,9 +322,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readline()
+            return await self._reader.readline()
         except ConnectionError:
             await self._close_client()
             raise
@@ -333,9 +359,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readuntil(separator)
+            return await self._reader.readuntil(separator)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -359,9 +385,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            await utils.read_into(reader=self.reader, struct=struct)
+            await utils.read_into(reader=self._reader, struct=struct)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -437,9 +463,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        self.writer.write(data)
-        await self.writer.drain()
+        assert self._writer is not None  # make mypy happy
+        self._writer.write(data)
+        await self._writer.drain()
 
     async def writelines(self, lines: collections.abc.Iterable) -> None:
         """Write an iterable of bytes and call ``drain``.
@@ -456,9 +482,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        self.writer.writelines(lines)
-        await self.writer.drain()
+        assert self._writer is not None  # make mypy happy
+        self._writer.writelines(lines)
+        await self._writer.drain()
 
     async def write_from(self, *structs: ctypes.Structure) -> None:
         r"""Write binary data from one or more `ctypes.Structure`\ s.
@@ -475,8 +501,8 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        await utils.write_from(self.writer, *structs)
+        assert self._writer is not None  # make mypy happy
+        await utils.write_from(self._writer, *structs)
 
     async def write_str(self, line: str) -> None:
         """Encode, terminate, and write a str.
@@ -531,21 +557,21 @@ class BaseClientOrServer(abc.ABC):
         raise NotImplementedError()
 
     async def _close_client(self) -> None:
-        """Close self.writer, after setting it to None,
+        """Close self._writer, after setting it to None,
         then call connect_callback.
 
         Does not set self.should_be_connected or stop the connection
         monitor.
 
-        Does not touch self.reader, since it cannot be closed
+        Does not touch self._reader, since it cannot be closed
         and subclasses may find it useful for it to be non-None.
         """
-        if self.writer is None:
+        if self._writer is None:
             return
 
         try:
-            writer = self.writer
-            self.writer = None
+            writer = self._writer
+            self._writer = None
             await utils.close_stream_writer(writer)
         except Exception:
             self.log.exception("Failed to close the writer; continuing.")
@@ -574,7 +600,7 @@ class BaseClientOrServer(abc.ABC):
     async def _set_reader_writer(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Set self.reader and self.writer to open streams.
+        """Set self._reader and self._writer to open streams.
 
         Set self.should_be_connected true.
         Does not start monitoring the connection.
@@ -587,8 +613,8 @@ class BaseClientOrServer(abc.ABC):
             An open stream writer.
         """
         self.should_be_connected = True
-        self.reader = reader
-        self.writer = writer
+        self._reader = reader
+        self._writer = writer
 
     async def __aenter__(self) -> BaseClientOrServer:
         await self.start_task

@@ -164,5 +164,5 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_read_write(self) -> None:
         assert self.reader
         assert self.writer
-        await self.check_read_write(reader=self.reader, writer=self.server.writer)
-        await self.check_read_write(reader=self.server.reader, writer=self.writer)
+        await self.check_read_write(reader=self.reader, writer=self.server._writer)
+        await self.check_read_write(reader=self.server._reader, writer=self.writer)
