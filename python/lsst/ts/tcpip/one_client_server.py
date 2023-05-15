@@ -26,6 +26,7 @@ __all__ = ["OneClientServer"]
 import asyncio
 import logging
 import typing
+import warnings
 
 from . import utils
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
@@ -157,6 +158,16 @@ class OneClientServer(BaseClientOrServer):
             **kwargs,
         )
 
+    # TODO DM-39202: remove this property.
+    @property
+    def server(self) -> asyncio.AbstractServer | None:
+        """Deprecated access to the underlying stream server."""
+        warnings.warn(
+            "Accessing the server directly is deprecated.",
+            DeprecationWarning,
+        )
+        return self._server
+
     async def start(self, **kwargs: typing.Any) -> None:
         """Start the TCP/IP server.
 
@@ -235,17 +246,22 @@ class OneClientServer(BaseClientOrServer):
         Always safe to call.
         """
         try:
-            self.log.info("Closing the server.")
-            if self._server is not None:
-                # Close the asyncio.Server
-                self._server.close()
-                await self._server.wait_closed()
-            await self.close_client()
-        except Exception:
-            self.log.exception("close failed; continuing")
+            try:
+                if self._server is not None:
+                    self.log.info("Closing the server.")
+                    server = self._server
+                    self._server = None
+                    server.close()
+                    await server.wait_closed()
+            except Exception:
+                self.log.exception("close failed to close server; continuing")
+            try:
+                await self.close_client()
+            except Exception:
+                self.log.exception("close failed to close client; continuing")
         finally:
             self._monitor_connection_task.cancel()
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def _monitor_connection(self) -> None:
@@ -267,7 +283,7 @@ class OneClientServer(BaseClientOrServer):
     async def _set_reader_writer(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Set self.reader and self.writer.
+        """Set self._reader and self._writer.
 
         Called when a client connects to this server.
 
@@ -289,8 +305,8 @@ class OneClientServer(BaseClientOrServer):
             await self.close_client()
 
         # Accept the connection
-        self.reader = reader
-        self.writer = writer
+        self._reader = reader
+        self._writer = writer
         if not self.connected_task.done():
             self.connected_task.set_result(None)
         await self.call_connect_callback()

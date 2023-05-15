@@ -27,7 +27,9 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_read_and_dispatch(self) -> None:
         num_good_writes = 5
-        async with self.create_server() as server, self.create_client(server) as client:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server) as client:
             await self.assert_next_connected(True)
             for i in range(num_good_writes + 1):
                 print(f"{i=}; {client.connected=}")

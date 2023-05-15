@@ -29,15 +29,16 @@ from lsst.ts import tcpip  # type: ignore
 TCP_TIMEOUT = 1
 
 
-class EchoServer(tcpip.OneClientServer):
-    """A trivial echo server for data terminated with ``tcpip.TERMINATOR``.
+class EchoServer(tcpip.OneClientReadLoopServer):
+    """A trivial echo server.
 
-    Intended as an example for using `OneClientServer`,
+    Intended as an example for using `OneClientReadLoopServer`,
     so it only serves one client at a time.
 
     To use:
 
-    * Construct the server
+    * Construct the server. The constructor arguments are the same as
+      `OneClientReadLoopServer`.
     * await server.start_task
     * Construct a client
     * await client.start_task and server.connected_task, in either order.
@@ -46,53 +47,15 @@ class EchoServer(tcpip.OneClientServer):
 
     Parameters
     ----------
-    host : `str`
-        The host; typically ``tcpip.LOCALHOST_IPV4`` (the default)
-        or ``tcpip.LOCALHOST_IPV6``.
+    log : `logging.Logger`
+        A logger.
     port : `int`
         The port; use 0 to pick a random free port.
     """
 
-    def __init__(self, host: str, port: int, log: logging.Logger) -> None:
-        self.read_loop_task: asyncio.Future = asyncio.Future()
-        super().__init__(
-            host=host,
-            port=port,
-            log=log,
-            connect_callback=self.connect_callback,
-        )
-
-    async def connect_callback(self, server: tcpip.OneClientServer) -> None:
-        """Called when a client connects or disconnects."""
-        self.read_loop_task.cancel()
-        if server.connected:
-            self.read_loop_task = asyncio.create_task(self.read_loop())
-
-    async def close_client(self) -> None:
-        """Override close_client to also cancel the read loop.
-
-        This makes for a cleaner shutdown.
-        """
-        self.read_loop_task.cancel()
-        await super().close_client()
-
-    async def read_loop(self) -> None:
-        """Read and echo data terminated with tcpip.TERMINATOR."""
-        self.log.info("Read loop begins")
-        try:
-            while self.connected:
-                data = await self.readuntil(tcpip.TERMINATOR)
-                self.log.info(f"Read loop read {data!r}")
-                await self.write(data)
-            self.log.info("Read loop ends; no client connected")
-        except asyncio.CancelledError:
-            # This is the usual end if the server writer is closed.
-            self.log.info("Read loop cancelled")
-        except asyncio.IncompleteReadError:
-            # This is the usual end if the client writer is closed.
-            self.log.info("Read loop ends: the other end hung up")
-        except Exception:
-            self.log.exception("Read loop fails")
+    async def read_and_dispatch(self) -> None:
+        data = await self.read_str()
+        await self.write_str(data)
 
 
 def configure_log(log: logging.Logger) -> None:
@@ -117,7 +80,7 @@ class ExampleTestCase(unittest.IsolatedAsyncioTestCase):
         log = logging.getLogger()
         configure_log(log)
 
-        server = EchoServer(host=tcpip.LOCALHOST_IPV4, port=0, log=log)
+        server = EchoServer(port=0, log=log)
         await server.start_task
 
         client = tcpip.Client(
@@ -129,12 +92,9 @@ class ExampleTestCase(unittest.IsolatedAsyncioTestCase):
         await server.connected_task
 
         for write_str in ("some data", "more data", "yet more data"):
-            write_bytes = write_str.encode() + tcpip.TERMINATOR
-            await asyncio.wait_for(client.write(write_bytes), timeout=TCP_TIMEOUT)
-            read_bytes = await asyncio.wait_for(
-                client.readuntil(tcpip.TERMINATOR), timeout=TCP_TIMEOUT
-            )
-            assert read_bytes == write_bytes
+            await asyncio.wait_for(client.write_str(write_str), timeout=TCP_TIMEOUT)
+            read_str = await asyncio.wait_for(client.read_str(), timeout=TCP_TIMEOUT)
+            assert read_str == write_str
 
         await client.close()
         await server.close()

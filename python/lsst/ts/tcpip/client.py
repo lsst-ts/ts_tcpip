@@ -146,7 +146,7 @@ class Client(BaseClientOrServer):
         try:
             await self._close_client()
         finally:
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def close(self) -> None:
@@ -176,16 +176,20 @@ class Client(BaseClientOrServer):
         `RuntimeError`
             If start already called.
         """
-        if self.reader is not None:
-            raise RuntimeError("Start already called.")
+        try:
+            if self._reader is not None:
+                raise RuntimeError("Start already called.")
 
-        reader, writer = await asyncio.open_connection(
-            host=self.host, port=self.port, **kwargs
-        )
-        await self._set_reader_writer(reader=reader, writer=writer)
-        self._start_monitoring_connection()
-        await self.call_connect_callback()
-        self.log.info(f"Client connected to host={self.host}; port={self.port}")
+            reader, writer = await asyncio.open_connection(
+                host=self.host, port=self.port, **kwargs
+            )
+            await self._set_reader_writer(reader=reader, writer=writer)
+            self._start_monitoring_connection()
+            await self.call_connect_callback()
+            self.log.info(f"Client connected to host={self.host}; port={self.port}")
+        except Exception as e:
+            print(f"start failed: {e!r}")
+            raise
 
     async def _monitor_connection(self) -> None:
         """Monitor to detect if the other end drops the connection.

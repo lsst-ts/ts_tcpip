@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import asyncio
-import contextlib
 import ctypes
 import itertools
 import logging
@@ -56,102 +55,73 @@ class ShortStruct(ctypes.Structure):
     ]
 
 
-class ClientTestCase(unittest.IsolatedAsyncioTestCase):
-    def setUp(self) -> None:
-        self.client_connect_callback_raises: bool = False
-        self.client_connect_queue: asyncio.Queue = asyncio.Queue()
-        self.log = logging.getLogger()
+class ClientTestCase(tcpip.BaseOneClientServerTestCase):
+    server_class = tcpip.OneClientServer
 
-    @contextlib.asynccontextmanager
-    async def create_server(
-        self, host: str = tcpip.LOCALHOST_IPV4, **kwargs: typing.Any
-    ) -> typing.AsyncGenerator[tcpip.OneClientServer, None]:
-        """Make a OneClientServer with a randomly chosen port.
-
-        Parameters
-        ----------
-        host : `str`
-            Host IP address
-        **kwargs : `dict` [`str`, `typing.Any`]
-            Additional keyword arguments for OneClientServer
-
-        Returns
-        -------
-        server : `OneClientServer`
-            The server, with port assigned and ready to receive connections.
+    async def check_read_write_not_connected(self, client: tcpip.Client) -> None:
+        """Check that all read and write Client methods raise
+        ConnectionError if not connected.
         """
-        async with tcpip.OneClientServer(
-            host=host,
-            port=0,
-            log=self.log,
-            connect_callback=None,
-            name="test",
-            **kwargs,
-        ) as server:
-            yield server
+        assert not client.connected
 
-    @contextlib.asynccontextmanager
-    async def create_client(
-        self,
-        server: tcpip.OneClientServer,
-        **kwargs: typing.Any,
-    ) -> typing.AsyncGenerator[tcpip.Client, None]:
-        """Make a TCP/IP client that talks to the server and wait for it to
-        connect.
+        struct = ShortStruct()
+        with pytest.raises(ConnectionError):
+            await client.read_json()
+        with pytest.raises(ConnectionError):
+            await client.read_str()
+        with pytest.raises(ConnectionError):
+            await client.read(1)
+        with pytest.raises(ConnectionError):
+            await client.readexactly(1)
+        with pytest.raises(ConnectionError):
+            await client.readline()
+        with pytest.raises(ConnectionError):
+            await client.readuntil(b"\n")
+        with pytest.raises(ConnectionError):
+            await client.read_into(struct)
+        with pytest.raises(ConnectionError):
+            await client.write(b"\n")
+        with pytest.raises(ConnectionError):
+            await client.write_from(struct)
+        with pytest.raises(ConnectionError):
+            await client.writelines([b" ", b"\n"])
 
-        Parameters
-        ----------
-        server : `OneClientServer`
-            The server to which to connect.
-        **kwargs : `dict` [`str`, `typing.Any`]
-            Additional keywords for `asyncio.open_connection`.
+        # Check that StreamReader.readline reads 0 bytes if disconnected
+        assert (
+            await asyncio.wait_for(client._reader.readline(), timeout=TCP_TIMEOUT)
+            == b""
+        )
 
-        Returns
-        -------
-            client : `tcpip.Client`
-                The client.
-        """
-        self.client_connect_queue = asyncio.Queue()
-        async with tcpip.Client(
-            host=server.host,
-            port=server.port,
-            log=self.log,
-            connect_callback=self.client_connect_callback,
-            name="test",
-            **kwargs,
-        ) as client:
-            assert client.should_be_connected
-            await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
-            yield client
-
-    async def client_connect_callback(self, client: tcpip.Client) -> None:
-        print(f"client_connect_callback: connected={client.connected}")
-        if self.client_connect_callback_raises:
-            raise RuntimeError(
-                "client_connect_callback raising because self.client_connect_callback_raises is true"
-            )
-        self.client_connect_queue.put_nowait(client.connected)
-
-    async def assert_next_client_connected(
+    async def assert_next_connected(
         self, connected: bool, timeout: int = TCP_TIMEOUT
     ) -> None:
-        """Assert results of next client_connect_callback.
+        """Assert results of next connect_callback.
 
         Parameters
         ----------
         connected : `bool`
             Is a client connected to the client connected?
         timeout : `float`
-            Time to wait for client_connect_callback (seconds).
+            Time to wait for connect_callback (seconds).
         """
         next_connected = await asyncio.wait_for(
-            self.client_connect_queue.get(), timeout=timeout
+            self.connect_queue.get(), timeout=timeout
         )
         assert connected == next_connected
 
     async def check_read_write_methods(
         self, reader: tcpip.BaseClientOrServer, writer: tcpip.BaseClientOrServer
     ) -> None:
+        """Check read and write methods by writing from one client or server
+        and reading from the opposite.
+
+        Parameters
+        ----------
+        reader : `tcpip.BaseClientOrServer`
+            Server or client.
+        writer : `tcpip.BaseClientOrServer`
+            Client (if reader is a server) or server (if reader is a client).
+        """
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n=len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
         read_bytes = await asyncio.wait_for(
@@ -191,11 +161,11 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         write_bytes = (
             b"terminated data with unicode \xf0\x9f\x98\x80 for readuntil"
-            + tcpip.TERMINATOR
+            + tcpip.DEFAULT_TERMINATOR
         )
         await writer.write(write_bytes)
         read_bytes = await asyncio.wait_for(
-            reader.readuntil(tcpip.TERMINATOR), timeout=TCP_TIMEOUT
+            reader.readuntil(tcpip.DEFAULT_TERMINATOR), timeout=TCP_TIMEOUT
         )
         assert read_bytes == write_bytes
 
@@ -259,50 +229,66 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
             writer.terminator = initial_terminator
 
     async def test_basic_close(self) -> None:
-        async with self.create_server() as server, self.create_client(server) as client:
-            await self.assert_next_client_connected(True)
+        async with self.create_server() as server, self.create_client(
+            server, connect_callback=self.connect_callback
+        ) as client:
+            await self.assert_next_connected(True)
+            assert not client.done_task.done()
 
-            await client.basic_close()
+            await asyncio.wait_for(client.basic_close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert client.should_be_connected
-            await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readuntil(tcpip.TERMINATOR)
+            assert client.done_task.done()
+            await self.assert_next_connected(False)
+            await self.check_read_write_not_connected(client)
 
     async def test_close(self) -> None:
         """Test Client.close"""
-        async with self.create_server() as server, self.create_client(server) as client:
-            await self.assert_next_client_connected(True)
+        async with self.create_server() as server, self.create_client(
+            server, connect_callback=self.connect_callback
+        ) as client:
+            await self.assert_next_connected(True)
+            assert not client.done_task.done()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert client.reader is not None
+            with pytest.warns(DeprecationWarning):
+                assert client.writer is not None
 
-            await client.close()
+            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert not client.should_be_connected
-            await self.assert_next_client_connected(False)
-            with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
-                await client.reader.readuntil(tcpip.TERMINATOR)
+            assert client.done_task.done()
+            # TODO DM-39202: remove these checks using deprecated properties.
+            with pytest.warns(DeprecationWarning):
+                assert client.writer is None
+            await self.assert_next_connected(False)
+            await self.check_read_write_not_connected(client)
 
             # Subsequent calls should have no effect
-            await client.close()
+            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
 
     async def test_connect_callback_raises(self) -> None:
-        self.client_connect_callback_raises = True
+        self.connect_callback_raises = True
         async with self.create_server() as server:
             assert not server.connected
             async with self.create_client(server) as client:
                 assert client.connected
                 assert server.connected
                 with pytest.raises(asyncio.TimeoutError):
-                    await self.assert_next_client_connected(True)
+                    await self.assert_next_connected(True)
                 await self.check_read_write_methods(reader=server, writer=client)
                 await self.check_read_write_methods(reader=client, writer=server)
 
     async def test_initial_conditions(self) -> None:
         async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert server.port != 0
-            async with self.create_client(server) as client:
+            async with self.create_client(
+                server, connect_callback=self.connect_callback
+            ) as client:
                 assert client.connected
                 assert server.connected
-                await self.assert_next_client_connected(True)
+                await self.assert_next_connected(True)
 
     async def test_read_write_methods(self) -> None:
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
@@ -326,11 +312,13 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
                         raise
 
     async def test_server_drops_connection(self) -> None:
-        async with self.create_server() as server, self.create_client(server) as client:
-            await self.assert_next_client_connected(True)
+        async with self.create_server() as server, self.create_client(
+            server, connect_callback=self.connect_callback
+        ) as client:
+            await self.assert_next_connected(True)
 
-            await server.close_client()
-            await self.assert_next_client_connected(False)
+            await asyncio.wait_for(server.close_client(), timeout=TCP_TIMEOUT)
+            await self.assert_next_connected(False)
             assert client.should_be_connected
 
     async def test_sync_connect_callback(self) -> None:
@@ -341,12 +329,8 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
 
         async with self.create_server() as server:
             with pytest.raises(TypeError):
-                tcpip.Client(
-                    host=server.host,
-                    port=server.port,
-                    log=self.log,
-                    connect_callback=sync_callback,
-                )
+                async with self.create_client(server, connect_callback=sync_callback):
+                    pass
 
     async def test_encodings_and_terminators(self) -> None:
         """Test encoding and terminator constructor arguments.
@@ -355,37 +339,21 @@ class ClientTestCase(unittest.IsolatedAsyncioTestCase):
         """
         async with self.create_server() as server:
             for good_encoding in ("utf-8", "utf_8", "utf-16", "UTF-32"):
-                async with tcpip.Client(
-                    host=server.host,
-                    port=server.port,
-                    log=self.log,
-                    encoding=good_encoding,
-                ) as client:
+                async with self.create_client(server, encoding=good_encoding) as client:
                     assert client.encoding == good_encoding
 
             for good_terminator in (b"\r\n", b"\r", b"any bytes"):
-                async with tcpip.Client(
-                    host=server.host,
-                    port=server.port,
-                    log=self.log,
-                    terminator=good_terminator,
+                async with self.create_client(
+                    server, terminator=good_terminator
                 ) as client:
                     assert client.terminator == good_terminator
 
             for bad_encoding in ("no_such_encoder", b"utf_8"):
                 with pytest.raises(ValueError):
-                    tcpip.Client(
-                        host=server.host,
-                        port=server.port,
-                        log=self.log,
-                        encoding=bad_encoding,
-                    )
+                    async with self.create_client(server, encoding=bad_encoding):
+                        pass
 
             for bad_terminator in ("\r\n", "any str"):
                 with pytest.raises(ValueError):
-                    tcpip.Client(
-                        host=server.host,
-                        port=server.port,
-                        log=self.log,
-                        terminator=bad_terminator,
-                    )
+                    async with self.create_client(server, terminator=bad_terminator):
+                        pass
