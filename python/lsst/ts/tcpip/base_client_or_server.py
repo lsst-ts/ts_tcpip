@@ -28,13 +28,18 @@ import asyncio
 import collections.abc
 import ctypes
 import inspect
+import json
 import logging
 import types
 import typing
 import warnings
 
 from . import utils
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MONITOR_CONNECTION_INTERVAL,
+    DEFAULT_TERMINATOR,
+)
 
 
 class BaseClientOrServer(abc.ABC):
@@ -67,6 +72,13 @@ class BaseClientOrServer(abc.ABC):
         using the read methods of this class.
     name : `str`
         Optional name used for log messages.
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+
     **kwargs : `dict` [`str`, `typing.Any`]
         Keyword arguments for start_task.
 
@@ -76,6 +88,10 @@ class BaseClientOrServer(abc.ABC):
         A child of the ``log`` constructor argument.
     name : `str`
         The ``name`` constructor argument.
+    encoding : `str`
+        The ``encoding`` constructor argument.
+    terminator : `bytes`
+        The ``terminator`` constructor argument.
     reader : `asyncio.StreamReader` or None
         Stream reader to read data from the server.
         This will be a stream reader (not None) if `connected` is True.
@@ -83,24 +99,23 @@ class BaseClientOrServer(abc.ABC):
         Stream writer to write data to the server.
         This will be a stream writer (not None) if `connected` is True.
     start_task : `asyncio.Future`
-        Future that is set done when the connection is made.
+        Future that is set done when:
+
+        * The connection is made, for the `Client` subclass.
+        * The server is ready to receive connections, for Server subclasses.
+
     done_task : `asyncio.Future`
-        Future that is set done when this client is closed, at which point
-        it is no longer usable.
+        Future that is set done when this instance is closed, at which point
+        the instance is no longer usable.
     should_be_connected : `bool`
         This flag helps you determine if you unexpectedly lost the connection
         (e.g. if the other end hung up). It is set true when the connection
-        is made and false when you call `close`. The connection was
-        unexpectedly lost if `connected` is false and ``should_be_connected``
-        is true.
+        is made and false when you call `close`, or
+        `OneClientServer.close_client`. The connection was unexpectedy lost
+        if `connected` is false and ``should_be_connected`` is true.
 
         If your CSC unexpectedly loses its connection to a low-level
         controller, you should send the CSC to fault state.
-
-        In order for this test to work, you must close the writer using
-        `close`, instead of any other method (such as manually closing
-        ``writer`` or calling `Client.basic_close` or
-        `OneClientServer.basic_close_client`).
 
     Notes
     -----
@@ -115,7 +130,7 @@ class BaseClientOrServer(abc.ABC):
     for unit tests.
 
     Subclasses should call `_start_monitoring_connection` from the `start`
-    method.
+    method, if monitoring is needed.
     """
 
     def __init__(
@@ -128,6 +143,8 @@ class BaseClientOrServer(abc.ABC):
         | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         if connect_callback is not None and not inspect.iscoroutinefunction(
@@ -138,11 +155,19 @@ class BaseClientOrServer(abc.ABC):
             warnings.warn(
                 "connect_callback should be asynchronous", category=DeprecationWarning
             )
+        if not isinstance(terminator, bytes):
+            raise ValueError(f"{terminator=!r} must be a bytes")
+        try:
+            " ".encode(encoding)
+        except Exception as e:
+            raise ValueError(f"{encoding=!r} is not a valid encoding: {e!r}")
 
         self.log = log.getChild(f"{type(self).__name__}({name})")
         self.__connect_callback = connect_callback
         self.monitor_connection_interval = monitor_connection_interval
         self.name = name
+        self.encoding = encoding
+        self.terminator = terminator
 
         # Has the connection been made and not closed at this end?
         self.should_be_connected = False
@@ -155,8 +180,8 @@ class BaseClientOrServer(abc.ABC):
         self._monitor_connection_task: asyncio.Future = asyncio.Future()
         self._monitor_connection_task.set_result(None)
 
-        self.reader: asyncio.StreamReader | None = None
-        self.writer: asyncio.StreamWriter | None = None
+        self._reader: asyncio.StreamReader | None = None
+        self._writer: asyncio.StreamWriter | None = None
 
         # Task which is set done when client connects.
         self.start_task: asyncio.Future = asyncio.create_task(self.start(**kwargs))
@@ -166,7 +191,7 @@ class BaseClientOrServer(abc.ABC):
 
     @property
     def connected(self) -> bool:
-        """Return True if self.reader and self.writer are connected.
+        """Return True if self._reader and self._writer are connected.
 
         Note: if the other end drops the connection and if you are not trying
         to read data (e.g. in a background loop), then it takes the operating
@@ -174,11 +199,37 @@ class BaseClientOrServer(abc.ABC):
         true for some unknown time after the connection has been dropped.
         """
         return not (
-            self.reader is None
-            or self.writer is None
-            or self.reader.at_eof()
-            or self.writer.is_closing()
+            self._reader is None
+            or self._writer is None
+            or self._reader.at_eof()
+            or self._writer.is_closing()
         )
+
+    # TODO DM-39202: remove this property.
+    @property
+    def reader(self) -> asyncio.StreamReader | None:
+        """Deprecated access to the underlying stream reader.
+
+        Use this classes' read methods instead.
+        """
+        warnings.warn(
+            "Accessing the writer directly is deprecated; use write methods instead.",
+            DeprecationWarning,
+        )
+        return self._reader
+
+    # TODO DM-39202: remove this property.
+    @property
+    def writer(self) -> asyncio.StreamWriter | None:
+        """Deprecated access to the underlying stream writer.
+
+        Use this classes' write methods instead.
+        """
+        warnings.warn(
+            "Accessing the writer directly is deprecated; use write methods instead.",
+            DeprecationWarning,
+        )
+        return self._writer
 
     async def call_connect_callback(self) -> None:
         """Call self.__connect_callback.
@@ -225,9 +276,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.read(n)
+            return await self._reader.read(n)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -251,9 +302,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readexactly(n)
+            return await self._reader.readexactly(n)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -271,20 +322,29 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readline()
+            return await self._reader.readline()
         except ConnectionError:
             await self._close_client()
             raise
 
     async def readuntil(self, separator: bytes = b"\n") -> bytes:
-        """Read one line, where “line” is a sequence of bytes ending with \n.
+        """Read one line, where “line” is a sequence of bytes ending with
+        ``separator``.
 
         Read data from the stream until separator is found.
 
         On success, the data and separator will be removed from the internal
         buffer (consumed). Returned data will include the separator at the end.
+
+        See also `read_str`, which is more convenient for most use cases.
+
+        Parameters
+        ----------
+        separator : `bytes`
+            The desired separator. The default matches the standard library,
+            rather than using ``terminator``.
 
         Raises
         ------
@@ -299,9 +359,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            return await self.reader.readuntil(separator)
+            return await self._reader.readuntil(separator)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
@@ -325,12 +385,68 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.reader is not None  # make mypy happy
+        assert self._reader is not None  # make mypy happy
         try:
-            await utils.read_into(reader=self.reader, struct=struct)
+            await utils.read_into(reader=self._reader, struct=struct)
         except (asyncio.IncompleteReadError, ConnectionError):
             await self._close_client()
             raise
+
+    async def read_str(self) -> str:
+        """Read and decode a terminated str; strip the terminator.
+
+        Read until ``self.terminator``, strip the terminator, and decode
+        the data as ``self.encoding`` with strict error handling.
+
+        Returns
+        -------
+        line : `str`
+            Line of data, as a str with the terminator stripped.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `asyncio.IncompleteReadError`
+            If EOF is reached before the complete separator is found
+            and the internal buffer is reset.
+        `LimitOverrunError`
+            If the amount of data read exceeds the configured stream lmit.
+            The data is left in the internal buffer and can be read again.
+        `UnicodeError`
+            If decoding fails.
+        """
+        data = await self.readuntil(self.terminator)
+        term_len = len(self.terminator)
+        return data[0:-term_len].decode(encoding=self.encoding, errors="strict")
+
+    async def read_json(self) -> typing.Any:
+        """Read JSON data.
+
+        Read the data with `read_str` and return the json-decoded result.
+
+        Returns
+        -------
+        data : `typing.Any`
+            Data decoded from JSON.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `asyncio.IncompleteReadError`
+            If EOF is reached before the complete separator is found
+            and the internal buffer is reset.
+        `LimitOverrunError`
+            If the amount of data read exceeds the configured stream lmit.
+            The data is left in the internal buffer and can be read again.
+        `TypeError`
+            If the data are of a type that cannot be decoded from JSON.
+        `json.JSONDecodeError`
+            If the data cannot be decoded from JSON.
+        """
+        data = await self.read_str()
+        return json.loads(data)
 
     async def write(self, data: bytes) -> None:
         """Write data and call ``drain``.
@@ -347,9 +463,9 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        self.writer.write(data)
-        await self.writer.drain()
+        assert self._writer is not None  # make mypy happy
+        self._writer.write(data)
+        await self._writer.drain()
 
     async def writelines(self, lines: collections.abc.Iterable) -> None:
         """Write an iterable of bytes and call ``drain``.
@@ -366,17 +482,17 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        self.writer.writelines(lines)
-        await self.writer.drain()
+        assert self._writer is not None  # make mypy happy
+        self._writer.writelines(lines)
+        await self._writer.drain()
 
     async def write_from(self, *structs: ctypes.Structure) -> None:
         r"""Write binary data from one or more `ctypes.Structure`\ s.
 
         Parameters
         ----------
-        struct : `ctypes.Structure`
-            Structure to write.
+        structs : `list` [`ctypes.Structure`]
+            Structures to write.
 
         Raises
         ------
@@ -385,8 +501,42 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self.writer is not None  # make mypy happy
-        await utils.write_from(self.writer, *structs)
+        assert self._writer is not None  # make mypy happy
+        await utils.write_from(self._writer, *structs)
+
+    async def write_str(self, line: str) -> None:
+        """Encode, terminate, and write a str.
+
+        Encode the str as ``self.encoding`` with strict error handling,
+        and append ``self.terminator``.
+
+        Parameters
+        ----------
+        line : `str`
+            The line of data to be written.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `UnicodeError`
+            If encoding fails.
+        """
+        data = line.encode(encoding=self.encoding, errors="strict") + self.terminator
+        await self.write(data)
+
+    async def write_json(self, data: typing.Any) -> None:
+        """Write data in JSON format.
+
+        Encode the data as json and write the result with `write_str`.
+
+        Parameters
+        ----------
+        data : `any`
+            The data to be written.
+        """
+        line = json.dumps(data)
+        await self.write_str(line)
 
     @abc.abstractmethod
     async def start(self, **kwargs: typing.Any) -> None:
@@ -407,21 +557,21 @@ class BaseClientOrServer(abc.ABC):
         raise NotImplementedError()
 
     async def _close_client(self) -> None:
-        """Close self.writer, after setting it to None,
+        """Close self._writer, after setting it to None,
         then call connect_callback.
 
         Does not set self.should_be_connected or stop the connection
         monitor.
 
-        Does not touch self.reader, since it cannot be closed
+        Does not touch self._reader, since it cannot be closed
         and subclasses may find it useful for it to be non-None.
         """
-        if self.writer is None:
+        if self._writer is None:
             return
 
         try:
-            writer = self.writer
-            self.writer = None
+            writer = self._writer
+            self._writer = None
             await utils.close_stream_writer(writer)
         except Exception:
             self.log.exception("Failed to close the writer; continuing.")
@@ -450,7 +600,7 @@ class BaseClientOrServer(abc.ABC):
     async def _set_reader_writer(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Set self.reader and self.writer to open streams.
+        """Set self._reader and self._writer to open streams.
 
         Set self.should_be_connected true.
         Does not start monitoring the connection.
@@ -463,8 +613,8 @@ class BaseClientOrServer(abc.ABC):
             An open stream writer.
         """
         self.should_be_connected = True
-        self.reader = reader
-        self.writer = writer
+        self._reader = reader
+        self._writer = writer
 
     async def __aenter__(self) -> BaseClientOrServer:
         await self.start_task

@@ -26,10 +26,16 @@ __all__ = ["OneClientServer"]
 import asyncio
 import logging
 import typing
+import warnings
 
 from . import utils
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_LOCALHOST,
+    DEFAULT_MONITOR_CONNECTION_INTERVAL,
+    DEFAULT_TERMINATOR,
+)
 
 
 class OneClientServer(BaseClientOrServer):
@@ -39,16 +45,17 @@ class OneClientServer(BaseClientOrServer):
 
     Parameters
     ----------
-    host : `str` or `None`
-        IP address for this server; typically `LOCALHOST_IPV4` for IPV4
-        or `LOCALHOST_IPV6` for IPV6. If `None` then bind to all network
-        interfaces (e.g. listen on an IPv4 socket and an IPv6 socket).
-        None can cause trouble with port=0;
-        see ``port`` in the Attributes section for more information.
     port : `int`
         IP port for this server. If 0 then randomly pick an available port
         (or ports, if listening on multiple sockets).
         0 is strongly recommended for unit tests.
+    host : `str` or `None`
+        IP address for this server. The default is `DEFAULT_LOCALHOST`.
+        Specify `LOCALHOST_IPV4` to force IPV4 or `LOCALHOST_IPV6` for IPV6.
+        If `None` then bind to all network interfaces
+        (e.g. listen on an IPv4 socket and an IPv6 socket).
+        Warning: `None` can cause trouble with ``port=0``; see ``port``
+        in the Attributes section for more information.
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
@@ -66,12 +73,20 @@ class OneClientServer(BaseClientOrServer):
         to detect and report hangups).
     name : `str`, optional
         Name used for log messages, e.g. "Commands" or "Telemetry".
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
 
     Attributes
     ----------
+    host : `str` | `None`
+        IP address; the ``host`` constructor argument.
     port : `int`
         The port on which this server is running.
 
@@ -90,32 +105,13 @@ class OneClientServer(BaseClientOrServer):
 
         An alternative that allows host=None is to specify family as
         `socket.AF_INET` for IPv4, or `socket.AF_INET6` for IPv6.
-    socket : `asyncio.AbstractServer` or None
-        The socket server. None until start_task is done.
-    reader : `asyncio.StreamReader` or None
-        Stream reader to read data from the client.
-        This will be a stream reader (not None) if `connected` is True.
-    writer : `asyncio.StreamWriter` or None
-        Stream writer to write data to the client.
-        This will be a stream writer (not None) if `connected` is True.
-    start_task : `asyncio.Future`
-        Future that is set done when the socket server has started running
-        and listening for connections.
     connected_task : `asyncio.Future`
         Future that is set done when a client connects.
         You may set replace it with a new `asyncio.Future`
         if you want to detect when another connection is made
         after the current client disconnects.
-    done_task : `asyncio.Future`
-        Future that is set done when this server is closed, at which point
-        it is no longer usable.
-
-    Warnings
-    --------
-    If you specify port=0 and host=None then it is not safe to rely on
-    the `port` property to give you the port, because the server is likely
-    to be listening on more than one socket, each with its own different port.
-    You can inspect `server.sockets` to obtain the necessary information.
+    plus...
+        Attributes provided by parent class `BaseClientOrServer`.
 
     Notes
     -----
@@ -137,25 +133,40 @@ class OneClientServer(BaseClientOrServer):
 
     def __init__(
         self,
-        host: str | None,
+        *,
         port: int | None,
+        host: str | None = DEFAULT_LOCALHOST,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         self.host = host
         self.port = port
-        self.server: asyncio.AbstractServer | None = None
+        self._server: asyncio.AbstractServer | None = None
         self.connected_task: asyncio.Future = asyncio.Future()
         super().__init__(
             log=log,
             connect_callback=connect_callback,
             monitor_connection_interval=monitor_connection_interval,
             name=name,
+            encoding=encoding,
+            terminator=terminator,
             **kwargs,
         )
+
+    # TODO DM-39202: remove this property.
+    @property
+    def server(self) -> asyncio.AbstractServer | None:
+        """Deprecated access to the underlying stream server."""
+        warnings.warn(
+            "Accessing the server directly is deprecated.",
+            DeprecationWarning,
+        )
+        return self._server
 
     async def start(self, **kwargs: typing.Any) -> None:
         """Start the TCP/IP server.
@@ -176,19 +187,19 @@ class OneClientServer(BaseClientOrServer):
             If start has already been called and has successfully constructed
             a server.
         """
-        if self.server is not None:
+        if self._server is not None:
             raise RuntimeError("Start already called.")
         self.log.debug("Starting server")
-        self.server = await asyncio.start_server(
+        self._server = await asyncio.start_server(
             self._set_reader_writer,
             host=self.host,
             port=self.port,
             **kwargs,
         )
-        assert self.server.sockets is not None
-        num_sockets = len(self.server.sockets)
+        assert self._server.sockets is not None
+        num_sockets = len(self._server.sockets)
         if self.port == 0 and num_sockets == 1:
-            self.port = self.server.sockets[0].getsockname()[1]  # type: ignore
+            self.port = self._server.sockets[0].getsockname()[1]  # type: ignore
         self._start_monitoring_connection()
         self.log.info(
             f"Server running: host={self.host}; port={self.port}; "
@@ -235,17 +246,22 @@ class OneClientServer(BaseClientOrServer):
         Always safe to call.
         """
         try:
-            self.log.info("Closing the server.")
-            if self.server is not None:
-                # Close the asyncio.Server
-                self.server.close()
-                await self.server.wait_closed()
-            await self.close_client()
-        except Exception:
-            self.log.exception("close failed; continuing")
+            try:
+                if self._server is not None:
+                    self.log.info("Closing the server.")
+                    server = self._server
+                    self._server = None
+                    server.close()
+                    await server.wait_closed()
+            except Exception:
+                self.log.exception("close failed to close server; continuing")
+            try:
+                await self.close_client()
+            except Exception:
+                self.log.exception("close failed to close client; continuing")
         finally:
             self._monitor_connection_task.cancel()
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def _monitor_connection(self) -> None:
@@ -267,7 +283,7 @@ class OneClientServer(BaseClientOrServer):
     async def _set_reader_writer(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Set self.reader and self.writer.
+        """Set self._reader and self._writer.
 
         Called when a client connects to this server.
 
@@ -289,8 +305,8 @@ class OneClientServer(BaseClientOrServer):
             await self.close_client()
 
         # Accept the connection
-        self.reader = reader
-        self.writer = writer
+        self._reader = reader
+        self._writer = writer
         if not self.connected_task.done():
             self.connected_task.set_result(None)
         await self.call_connect_callback()

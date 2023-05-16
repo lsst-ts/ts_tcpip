@@ -29,7 +29,11 @@ import logging
 import typing
 
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
-from .constants import DEFAULT_MONITOR_CONNECTION_INTERVAL
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_MONITOR_CONNECTION_INTERVAL,
+    DEFAULT_TERMINATOR,
+)
 
 
 class Client(BaseClientOrServer):
@@ -61,6 +65,12 @@ class Client(BaseClientOrServer):
         to detect and report hangups).
     name : `str`
         Optional name used for log messages.
+    encoding : `str`
+        The encoding used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
+    terminator : `bytes`
+        The terminator used by `read_str` and `write_str`, `read_json`,
+         and `write_json`.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.open_connection`,
         beyond host and port.
@@ -71,26 +81,8 @@ class Client(BaseClientOrServer):
         IP address; the ``host`` constructor argument.
     port : `int` | `None`
         IP port; the ``port`` constructor argument.
-    log : `logging.Logger`
-        A child of the ``log`` constructor argument.
-    name : `str`
-        The ``name`` constructor argument.
-    reader : `asyncio.StreamReader` or None
-        Stream reader to read data from the server.
-        This will be a stream reader (not None) if `connected` is True.
-    writer : `asyncio.StreamWriter` or None
-        Stream writer to write data to the server.
-        This will be a stream writer (not None) if `connected` is True.
-    should_be_connected : `bool`
-        True if the connection was made and close not called.
-        The connection was unexpectedly lost if ``should_be_connected``
-        is true and ``connected`` is false (unless you close the connection
-        by calling `basic_close` or manually closing ``writer``).
-    start_task : `asyncio.Future`
-        Future that is set done when the connection is made.
-    done_task : `asyncio.Future`
-        Future that is set done when this client is closed, at which point
-        it is no longer usable.
+    plus...
+        Attributes provided by parent class `BaseClientOrServer`.
 
     Raises
     ------
@@ -114,12 +106,15 @@ class Client(BaseClientOrServer):
 
     def __init__(
         self,
+        *,
         host: str | None,
         port: int | None,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        encoding: str = DEFAULT_ENCODING,
+        terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
         # TODO DM-37477: delete this test and let the base class handle it
@@ -136,6 +131,8 @@ class Client(BaseClientOrServer):
             connect_callback=connect_callback,
             monitor_connection_interval=monitor_connection_interval,
             name=name,
+            encoding=encoding,
+            terminator=terminator,
             **kwargs,
         )
 
@@ -149,7 +146,7 @@ class Client(BaseClientOrServer):
         try:
             await self._close_client()
         finally:
-            if self.done_task.done():
+            if not self.done_task.done():
                 self.done_task.set_result(None)
 
     async def close(self) -> None:
@@ -179,16 +176,20 @@ class Client(BaseClientOrServer):
         `RuntimeError`
             If start already called.
         """
-        if self.reader is not None:
-            raise RuntimeError("Start already called.")
+        try:
+            if self._reader is not None:
+                raise RuntimeError("Start already called.")
 
-        reader, writer = await asyncio.open_connection(
-            host=self.host, port=self.port, **kwargs
-        )
-        await self._set_reader_writer(reader=reader, writer=writer)
-        self._start_monitoring_connection()
-        await self.call_connect_callback()
-        self.log.info(f"Client connected to host={self.host}; port={self.port}")
+            reader, writer = await asyncio.open_connection(
+                host=self.host, port=self.port, **kwargs
+            )
+            await self._set_reader_writer(reader=reader, writer=writer)
+            self._start_monitoring_connection()
+            await self.call_connect_callback()
+            self.log.info(f"Client connected to host={self.host}; port={self.port}")
+        except Exception as e:
+            print(f"start failed: {e!r}")
+            raise
 
     async def _monitor_connection(self) -> None:
         """Monitor to detect if the other end drops the connection.
