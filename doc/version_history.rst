@@ -6,6 +6,15 @@
 Version History
 ###############
 
+v1.1.1
+------
+
+* Fix backwards compatibility issues with version 1.0:
+
+  * `Client`: allow non-keyword constructor arguments.
+  * `OneClientServer`: allow non-keyword constructor arguments and remove the (new in v1.1.0) default value for the ``host`` argument.
+    Note that `OneClientReadLoopServer` is unchanged: the constructor arguments are keyword-only and ``host`` has a default value.
+
 v1.1.0
 ------
 
@@ -26,10 +35,14 @@ v1.1.0
     * ``DEFAULT_TERMINATOR``, the same as deprecated ``TERMINATOR``.
     * ``DEFAULT_ENCODING``.
 
-* `Client`: fix setting ``done_task`` done.
+* `Client`:
+
+    * Make constructor arguments keyword-only.
+    * Fix setting ``done_task`` done.
 
 * `OneClientServer` and subclasses:
 
+    * Make constructor arguments keyword-only.
     * Provide a default for the ``host`` constructor argument: ``DEFAULT_LOCALHOST``.
     * Fix setting ``done_task`` done.
 
