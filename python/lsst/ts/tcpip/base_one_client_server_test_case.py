@@ -27,6 +27,7 @@ from typing import Any, AsyncGenerator
 
 from .base_client_or_server import BaseClientOrServer
 from .client import Client
+from .constants import DEFAULT_LOCALHOST
 from .one_client_server import OneClientServer
 
 __all__ = ["BaseOneClientServerTestCase"]
@@ -103,8 +104,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
 
     @contextlib.asynccontextmanager
     async def create_server(
-        self,
-        **kwargs: Any,
+        self, **kwargs: Any
     ) -> AsyncGenerator[OneClientServer, None]:
         """Create a server of the class being tested.
 
@@ -124,6 +124,10 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError(
                 "You must set class variable server_class to OneClientServer or a subclass"
             )
+        if self.server_class is OneClientServer:
+            # OneClientServer requires the host argument
+            # (for backwards compatibility with ts_tcpip 1.0).
+            kwargs.setdefault("host", DEFAULT_LOCALHOST)
         self.connect_queue = asyncio.Queue()
         async with self.server_class(port=0, log=self.log, **kwargs) as server:
             yield server  # type: ignore # mypy bug?

@@ -143,6 +143,7 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
     async def test_port_0_not_started(self) -> None:
         """Test server.port is 0 until server started, then nonzero."""
         server = tcpip.OneClientServer(
+            host=tcpip.DEFAULT_LOCALHOST,
             port=0,
             log=self.log,
         )
