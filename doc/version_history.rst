@@ -6,6 +6,11 @@
 Version History
 ###############
 
+v1.1.2
+------
+
+* `BaseClientOrServer`: improve the exception raised by read_json for invalid data, so that the messagse includes the invalid data.
+
 v1.1.1
 ------
 
