@@ -22,6 +22,7 @@
 import asyncio
 import ctypes
 import itertools
+import json
 import logging
 import typing
 import unittest
@@ -310,6 +311,14 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                         )
                     else:
                         raise
+
+    async def test_read_json_exception(self) -> None:
+        """Test that read_json's decoding exception includes the bad data."""
+        invalid_json_data = "not valid json"
+        async with self.create_server() as server, self.create_client(server) as client:
+            await client.write_str(invalid_json_data)
+            with pytest.raises(json.JSONDecodeError, match=invalid_json_data):
+                await server.read_json()
 
     async def test_server_drops_connection(self) -> None:
         async with self.create_server() as server, self.create_client(
