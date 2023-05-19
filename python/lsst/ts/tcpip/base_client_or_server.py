@@ -446,7 +446,14 @@ class BaseClientOrServer(abc.ABC):
             If the data cannot be decoded from JSON.
         """
         data = await self.read_str()
-        return json.loads(data)
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError as e:
+            # Expand the uninformative message in the raised exception
+            # to include the invalid data.
+            raise json.JSONDecodeError(
+                msg=f"{data=!r} is not valid json", doc=e.doc, pos=e.pos
+            )
 
     async def write(self, data: bytes) -> None:
         """Write data and call ``drain``.
@@ -533,7 +540,17 @@ class BaseClientOrServer(abc.ABC):
         Parameters
         ----------
         data : `any`
-            The data to be written.
+            The data to be written. Typically a dict,
+            but any json-encodable data is acceptable.
+
+        Raises
+        ------
+        `ConnectionError`
+            If the connection is lost before, or while, reading.
+        `UnicodeError`
+            If encoding fails.
+        `json.JSONEncodeError`
+            If the data cannot be json-encoded.
         """
         line = json.dumps(data)
         await self.write_str(line)
