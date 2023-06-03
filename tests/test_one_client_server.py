@@ -209,6 +209,18 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             await server.close_client()
             await server.close()
 
+    async def test_sync_close(self) -> None:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server) as client:
+            assert client.connected
+            assert server.connected
+            await self.assert_next_connected(True)
+            server.sync_close()
+            assert not server.connected
+            with pytest.raises(asyncio.TimeoutError):
+                await self.assert_next_connected(False)
+
     async def test_connect_callback_raises(self) -> None:
         self.callbacks_raise = True
         async with self.create_server(connect_callback=self.connect_callback) as server:

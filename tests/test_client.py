@@ -291,6 +291,18 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                 assert server.connected
                 await self.assert_next_connected(True)
 
+    async def test_sync_close(self) -> None:
+        async with self.create_server() as server, self.create_client(
+            server, connect_callback=self.connect_callback
+        ) as client:
+            assert client.connected
+            assert server.connected
+            await self.assert_next_connected(True)
+            client.sync_close()
+            assert not client.connected
+            with pytest.raises(asyncio.TimeoutError):
+                await self.assert_next_connected(False)
+
     async def test_read_write_methods(self) -> None:
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
             with self.subTest(localhost=localhost):

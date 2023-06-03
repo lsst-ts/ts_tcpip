@@ -232,7 +232,7 @@ class BaseClientOrServer(abc.ABC):
         return self._writer
 
     async def call_connect_callback(self) -> None:
-        """Call self.__connect_callback.
+        """Call self.__connect_callback, catching and logging any exceptions.
 
         This is always safe to call. It only calls the callback function
         if that function is not None and if the connection state has changed
@@ -257,8 +257,38 @@ class BaseClientOrServer(abc.ABC):
 
     @abc.abstractmethod
     async def close(self) -> None:
-        """Close the client or server, making it unusable."""
+        """Close the client or server, making it unusable.
+
+        Set self.should_be_connected false, cancel the connection monitor,
+        and call connect_callback.
+
+        Set self._writer and, if relevant, self._server, to None
+        """
         raise NotImplementedError()
+
+    def sync_close(self) -> None:
+        """Close the client or server synchronously, making it unusable.
+
+        Like `close`, but does not wait for the server and writer to close
+        and *does not call the connect_callback*.
+
+        Only intended for use by signal handlers. Call self.close instead,
+        instead, if possible.
+
+        Server subclasses must override to close the server.
+        """
+        self.should_be_connected = False
+        self._monitor_connection_task.cancel()
+        if not self.done_task.done():
+            self.done_task.set_result(None)
+
+        if self._writer is not None:
+            try:
+                writer = self._writer
+                self._writer = None
+                writer.close()
+            except Exception:
+                self.log.exception("Failed to close the writer; continuing.")
 
     async def read(self, n: int) -> bytes:
         """Read up to n bytes.
@@ -575,7 +605,7 @@ class BaseClientOrServer(abc.ABC):
 
     async def _close_client(self) -> None:
         """Close self._writer, after setting it to None,
-        then call connect_callback.
+        then call connect_callback (if self_writer was not None).
 
         Does not set self.should_be_connected or stop the connection
         monitor.

@@ -262,6 +262,25 @@ class OneClientServer(BaseClientOrServer):
             if not self.done_task.done():
                 self.done_task.set_result(None)
 
+    def sync_close(self) -> None:
+        """Close the server, making it unusable.
+
+        Like self.close, but does not wait for the writer or server to close
+        and *does not call the connect_callback*.
+
+        Only intended for use by signal handlers. Call self.close,
+        instead, if possible.
+        """
+        super().sync_close()
+
+        if self._server is not None:
+            try:
+                server = self._server
+                self._server = None
+                server.close()
+            except Exception:
+                self.log.exception("Failed to close the server; continuing.")
+
     async def _monitor_connection(self) -> None:
         """Monitor to detect if the client drops the connection.
 
