@@ -35,6 +35,9 @@ from .constants import (
     DEFAULT_TERMINATOR,
 )
 
+# Default connect_timeout (sec)
+DEFAULT_CONNECT_TIMEOUT = 5
+
 
 class Client(BaseClientOrServer):
     """A TCP/IP socket client.
@@ -56,6 +59,8 @@ class Client(BaseClientOrServer):
         If the other end (server) closes the connection, it may take
         ``monitor_connection_interval`` seconds or longer to notice.
         The function receives one argument: this `Client`.
+    connect_timeout : `float`, optional
+        Default connection timeout (sec).
     monitor_connection_interval : `float`, optional
         Interval between checking if the connection is still alive (seconds).
         Defaults to DEFAULT_MONITOR_CONNECTION_INTERVAL.
@@ -110,6 +115,7 @@ class Client(BaseClientOrServer):
         port: int | None,
         log: logging.Logger,
         connect_callback: ConnectCallbackType | None = None,
+        connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
         encoding: str = DEFAULT_ENCODING,
@@ -124,6 +130,7 @@ class Client(BaseClientOrServer):
             raise TypeError("connect_callback must be asynchronous")
         self.host = host
         self.port = port
+        self.connect_timeout = connect_timeout
 
         super().__init__(
             log=log,
@@ -179,13 +186,14 @@ class Client(BaseClientOrServer):
             if self._reader is not None:
                 raise RuntimeError("Start already called.")
 
-            reader, writer = await asyncio.open_connection(
-                host=self.host, port=self.port, **kwargs
+            self.log.info(f"Connecting to host={self.host}; port={self.port}")
+            reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host=self.host, port=self.port, **kwargs),
+                timeout=self.connect_timeout,
             )
             await self._set_reader_writer(reader=reader, writer=writer)
             self._start_monitoring_connection()
             await self.call_connect_callback()
-            self.log.info(f"Client connected to host={self.host}; port={self.port}")
         except Exception as e:
             print(f"start failed: {e!r}")
             raise
