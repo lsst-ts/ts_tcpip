@@ -6,6 +6,14 @@
 Version History
 ###############
 
+v1.2.0
+------
+
+* `BaseClientOrServer`: add ``sync_close`` method.
+  This is only intended for use by signal handlers.
+  It does not call connect_callback, because it cannot assume an event loop is running.
+* `Client`: add ``connect_timeout`` constructor argument.
+
 v1.1.3
 ------
 
