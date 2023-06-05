@@ -46,7 +46,8 @@ class Client(BaseClientOrServer):
     Parameters
     ----------
     host : `str` | `None`
-        IP address.
+        IP address. If blank ("") then create a Client that is
+        already closed.
     port : `int` | `None`
         IP port.
     log : `logging.Logger`
@@ -93,8 +94,19 @@ class Client(BaseClientOrServer):
     -----
     See `tests/test_example.py <https://ls.st/514>`_ for an example.
 
-    Always wait for ``start_task`` after constructing an instance,
-    before using the instance. This indicates the client has connected.
+    Creating an already-closed Client by specifying host="" allows you to
+    initialize a client attribute in a CSC or other class, in such a way that
+    it is safe to access `connected` and ``should_be_connected``
+    (both of which will be False), and call `close` (which will be a no-op).
+    You can also await ``start_task`` and ``done_task`` if you wish,
+    but both will be done when constructed.
+
+    Always wait for ``start_task`` after constructing an instance
+    before using the instance. This indicates the client has connected
+    and is ready to read and write data.
+    The sole exception is specifying host="" to create a Client that is
+    already closed, since you will never use those to read or write data
+    and both ``start_task`` and ``done_task`` are already done when created.
 
     This class provides high-level read and write methods that monitor
     the connection (to call ``connect_callback`` as needed) and reject
@@ -132,8 +144,12 @@ class Client(BaseClientOrServer):
             name=name,
             encoding=encoding,
             terminator=terminator,
+            do_start=host != "",
             **kwargs,
         )
+        if host == "":
+            self.start_task.set_result(False)
+            self.done_task.set_result(False)
 
     async def basic_close(self) -> None:
         """Close the connected client socket, if any, and set done_task done.

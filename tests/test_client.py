@@ -281,6 +281,14 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                 await self.check_read_write_methods(reader=server, writer=client)
                 await self.check_read_write_methods(reader=client, writer=server)
 
+    async def test_create_done_client(self) -> None:
+        client = tcpip.Client(host="", port=0, log=self.log)
+        assert client.start_task.done()
+        assert client.done_task.done()
+        assert not client.connected
+        assert not client.should_be_connected
+        await client.close()
+
     async def test_initial_conditions(self) -> None:
         async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert server.port != 0
