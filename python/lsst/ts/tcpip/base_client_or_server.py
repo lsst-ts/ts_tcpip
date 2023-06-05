@@ -72,6 +72,9 @@ class BaseClientOrServer(abc.ABC):
         using the read methods of this class.
     name : `str`
         Optional name used for log messages.
+    do_start : `bool`, optional
+        Call start in the constructor? Normally True (the default),
+        but set False by Client when creating an already-closed Client.
     encoding : `str`
         The encoding used by `read_str` and `write_str`, `read_json`,
          and `write_json`.
@@ -143,6 +146,7 @@ class BaseClientOrServer(abc.ABC):
         | None = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
+        do_start: bool = True,
         encoding: str = DEFAULT_ENCODING,
         terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
@@ -183,11 +187,13 @@ class BaseClientOrServer(abc.ABC):
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
 
-        # Task which is set done when client connects.
-        self.start_task: asyncio.Future = asyncio.create_task(self.start(**kwargs))
-
         # Task which is set done when the client is closed.
         self.done_task: asyncio.Future = asyncio.Future()
+
+        # Task which is set done when client connects.
+        self.start_task: asyncio.Future = (
+            asyncio.create_task(self.start(**kwargs)) if do_start else asyncio.Future()
+        )
 
     @property
     def connected(self) -> bool:
@@ -213,7 +219,7 @@ class BaseClientOrServer(abc.ABC):
         Use this classes' read methods instead.
         """
         warnings.warn(
-            "Accessing the writer directly is deprecated; use write methods instead.",
+            "Accessing the reader directly is deprecated; use read methods instead.",
             DeprecationWarning,
         )
         return self._reader
