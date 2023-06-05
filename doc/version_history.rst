@@ -6,6 +6,12 @@
 Version History
 ###############
 
+v1.2.0
+------
+
+* `Client`: new feature: specify ``host=""`` to create a client that is already closed.
+* `BaseClientOrServer`: add a ``do_start`` constructor argument, which defaults to `True`.
+
 v1.1.3
 ------
 
