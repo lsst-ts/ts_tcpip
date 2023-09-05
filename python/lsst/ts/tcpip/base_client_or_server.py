@@ -211,32 +211,6 @@ class BaseClientOrServer(abc.ABC):
             or self._writer.is_closing()
         )
 
-    # TODO DM-39202: remove this property.
-    @property
-    def reader(self) -> asyncio.StreamReader | None:
-        """Deprecated access to the underlying stream reader.
-
-        Use this classes' read methods instead.
-        """
-        warnings.warn(
-            "Accessing the reader directly is deprecated; use read methods instead.",
-            DeprecationWarning,
-        )
-        return self._reader
-
-    # TODO DM-39202: remove this property.
-    @property
-    def writer(self) -> asyncio.StreamWriter | None:
-        """Deprecated access to the underlying stream writer.
-
-        Use this classes' write methods instead.
-        """
-        warnings.warn(
-            "Accessing the writer directly is deprecated; use write methods instead.",
-            DeprecationWarning,
-        )
-        return self._writer
-
     async def call_connect_callback(self) -> None:
         """Call self.__connect_callback.
 
