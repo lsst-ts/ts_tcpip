@@ -32,7 +32,6 @@ import json
 import logging
 import types
 import typing
-import warnings
 
 from . import utils
 from .constants import (
@@ -56,8 +55,7 @@ class BaseClientOrServer(abc.ABC):
     log : `logging.Logger`
         Logger.
     connect_callback : callable or `None`, optional
-        Asynchronous or (deprecated) synchronous function to call when
-        the connection state changes.
+        Asynchronous function to call when the connection state changes.
         The function receives one argument: this `BaseClientOrServer`.
 
         Note: if the connection is unexpectedly lost and you are not reading
@@ -120,6 +118,11 @@ class BaseClientOrServer(abc.ABC):
         If your CSC unexpectedly loses its connection to a low-level
         controller, you should send the CSC to fault state.
 
+    Raises
+    ------
+    `TypeError`
+        If `connect_callback` is synchronous.
+
     Notes
     -----
     Always wait for ``start_task`` after constructing an instance,
@@ -154,11 +157,7 @@ class BaseClientOrServer(abc.ABC):
         if connect_callback is not None and not inspect.iscoroutinefunction(
             connect_callback
         ):
-            # TODO DM-37477: modify this to raise (and update the doc string)
-            # once we drop support for sync connect_callback
-            warnings.warn(
-                "connect_callback should be asynchronous", category=DeprecationWarning
-            )
+            raise TypeError("connect_callback must be asynchronous")
         if not isinstance(terminator, bytes):
             raise ValueError(f"{terminator=!r} must be a bytes")
         try:
@@ -226,12 +225,7 @@ class BaseClientOrServer(abc.ABC):
             self._was_connected = connected
             if self.__connect_callback is not None:
                 try:
-                    # TODO DM-37477: simplify this to
-                    # `await self._connect_callback(self)`
-                    # once we drop support for sync connect_callback
-                    result = self.__connect_callback(self)
-                    if inspect.isawaitable(result):
-                        await result
+                    await self.__connect_callback(self)
                 except Exception:
                     self.log.exception("connect_callback failed.")
 
@@ -626,9 +620,4 @@ class BaseClientOrServer(abc.ABC):
         await self.close()
 
 
-# TODO DM-37477: simplify this by changing
-# "None | typing.Awaitable[None]" to "typing.Awaitable[None]"
-# once we drop support for sync connect_callback
-ConnectCallbackType = typing.Callable[
-    [BaseClientOrServer], None | typing.Awaitable[None]
-]
+ConnectCallbackType = typing.Callable[[BaseClientOrServer], typing.Awaitable[None]]
