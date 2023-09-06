@@ -83,20 +83,19 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             )
         await super().connect_callback(server)
 
-    def sync_connect_callback(self, server: tcpip.OneClientServer) -> None:
+    def sync_connect_callback(self) -> None:
         """A synchronous version of connect_callback.
 
-        TODO DM-37477: drop this method argument when we remove support
-        for synchronous connect_callback functions.
+        The purpose of this synchronous callback function is to support the
+        unit test case that shows that synchronous callback functions are not
+        supported.
         """
-        print(f"sync_connect_callback: connected={server.connected}")
         if self.connect_queue is None:
             raise RuntimeError("You must call create_server")
         if self.callbacks_raise:
             raise RuntimeError(
                 "connect_callback raising because self.callbacks_raise is true"
             )
-        self.connect_queue.put_nowait(server.connected)
 
     async def check_read_write(
         self, reader: tcpip.BaseClientOrServer, writer: tcpip.BaseClientOrServer
@@ -160,24 +159,12 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             connect_callback=self.connect_callback
         ) as server, self.create_client(server=server) as client:
             await self.assert_next_connected(True)
-            # TODO DM-39202: remove these checks using deprecated properties.
-            with pytest.warns(DeprecationWarning):
-                assert server.reader is not None
-            with pytest.warns(DeprecationWarning):
-                assert server.writer is not None
-            with pytest.warns(DeprecationWarning):
-                assert server.server is not None
 
             await server.close_client()
             assert not server.connected
             # Closing the client should not set done_task done.
             assert not server.done_task.done()
             await self.assert_next_connected(False)
-            # TODO DM-39202: remove these checks using deprecated properties.
-            with pytest.warns(DeprecationWarning):
-                assert server.writer is None
-            with pytest.warns(DeprecationWarning):
-                assert server.server is not None
             assert client._reader.at_eof()
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.readline()
@@ -196,11 +183,6 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             await server.close()
             assert not server.connected
             assert server.done_task.done()
-            # TODO DM-39202: remove these checks using deprecated properties.
-            with pytest.warns(DeprecationWarning):
-                assert server.writer is None
-            with pytest.warns(DeprecationWarning):
-                assert server.server is None
             await self.assert_next_connected(False)
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
                 await client.readline()
@@ -298,15 +280,13 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                     else:
                         raise
 
-    # TODO DM-37477: modify this test to expect a TypeError (and construct
-    # the OneClientServer directly, instead of calling create_server)
-    # once we drop support for sync connect_callback
     async def test_sync_connect_callback(self) -> None:
-        with pytest.warns(DeprecationWarning):
-            async with self.create_server(
-                connect_callback=self.sync_connect_callback
-            ) as server, self.create_client(server):
-                await self.assert_next_connected(True)
+        """The purpose of this test case is to show that synchronous callback
+        functions aren't supported."""
+        with pytest.raises(TypeError):
+            tcpip.OneClientServer(
+                port=0, log=self.log, connect_callback=self.sync_connect_callback
+            )
 
     async def test_simultaneous_clients(self) -> None:
         """Test several clients connecting at the same time.
@@ -336,8 +316,10 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                 writers = [task.result()[1] for task in tasks]
             try:
                 readers = [task.result()[0] for task in tasks]
-                is_open = [await is_reader_open(reader) for reader in reversed(readers)]
-                assert len([True for open in is_open if open]) == 1
+                is_open_list = [
+                    await is_reader_open(reader) for reader in reversed(readers)
+                ]
+                assert len([True for is_open in is_open_list if is_open]) == 1
             finally:
                 for writer in writers:
                     await tcpip.close_stream_writer(writer)

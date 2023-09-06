@@ -250,19 +250,11 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         ) as client:
             await self.assert_next_connected(True)
             assert not client.done_task.done()
-            # TODO DM-39202: remove these checks using deprecated properties.
-            with pytest.warns(DeprecationWarning):
-                assert client.reader is not None
-            with pytest.warns(DeprecationWarning):
-                assert client.writer is not None
 
             await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
             assert not client.connected
             assert not client.should_be_connected
             assert client.done_task.done()
-            # TODO DM-39202: remove these checks using deprecated properties.
-            with pytest.warns(DeprecationWarning):
-                assert client.writer is None
             await self.assert_next_connected(False)
             await self.check_read_write_not_connected(client)
 

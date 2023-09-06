@@ -6,6 +6,13 @@
 Version History
 ###############
 
+v2.0.0
+------
+
+* `BaseClientOrServer`: Remove ``reader`` and ``writer`` properties.
+* `OneClientServer`: Remove ``server`` property.
+* Drop support for synchronous connect_callback.
+
 v1.2.0
 ------
 
