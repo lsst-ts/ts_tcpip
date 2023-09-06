@@ -24,7 +24,6 @@ from __future__ import annotations
 __all__ = ["Client"]
 
 import asyncio
-import inspect
 import logging
 import typing
 
@@ -85,11 +84,6 @@ class Client(BaseClientOrServer):
     plus...
         Attributes provided by parent class `BaseClientOrServer`.
 
-    Raises
-    ------
-    `TypeError`
-        If `connect_callback` is synchronous.
-
     Notes
     -----
     See `tests/test_example.py <https://ls.st/514>`_ for an example.
@@ -128,12 +122,6 @@ class Client(BaseClientOrServer):
         terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
-        # TODO DM-37477: delete this test and let the base class handle it
-        # once we drop support for sync connect_callback
-        if connect_callback is not None and not inspect.iscoroutinefunction(
-            connect_callback
-        ):
-            raise TypeError("connect_callback must be asynchronous")
         self.host = host
         self.port = port
 

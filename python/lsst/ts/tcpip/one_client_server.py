@@ -26,7 +26,6 @@ __all__ = ["OneClientServer"]
 import asyncio
 import logging
 import typing
-import warnings
 
 from . import utils
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
@@ -155,16 +154,6 @@ class OneClientServer(BaseClientOrServer):
             terminator=terminator,
             **kwargs,
         )
-
-    # TODO DM-39202: remove this property.
-    @property
-    def server(self) -> asyncio.AbstractServer | None:
-        """Deprecated access to the underlying stream server."""
-        warnings.warn(
-            "Accessing the server directly is deprecated.",
-            DeprecationWarning,
-        )
-        return self._server
 
     async def start(self, **kwargs: typing.Any) -> None:
         """Start the TCP/IP server.
