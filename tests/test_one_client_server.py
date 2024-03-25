@@ -296,9 +296,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
         num_clients = 5
         async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
 
-            async def open_connection() -> tuple[
-                asyncio.StreamReader, asyncio.StreamWriter
-            ]:
+            async def open_connection() -> (
+                tuple[asyncio.StreamReader, asyncio.StreamWriter]
+            ):
                 """Open a client connection to ``server``.
 
                 Returns
