@@ -6,6 +6,11 @@
 Version History
 ###############
 
+v2.0.1
+------
+
+* Update the version of ts-conda-build to 0.4 in the conda recipe.
+
 v2.0.0
 ------
 
