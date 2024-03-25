@@ -143,10 +143,9 @@ class BaseClientOrServer(abc.ABC):
         self,
         *,
         log: logging.Logger,
-        connect_callback: typing.Callable[
-            [BaseClientOrServer], None | typing.Awaitable[None]
-        ]
-        | None = None,
+        connect_callback: (
+            typing.Callable[[BaseClientOrServer], None | typing.Awaitable[None]] | None
+        ) = None,
         monitor_connection_interval: float = DEFAULT_MONITOR_CONNECTION_INTERVAL,
         name: str = "",
         do_start: bool = True,
