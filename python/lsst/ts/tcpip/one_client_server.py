@@ -35,6 +35,9 @@ from .constants import (
     DEFAULT_TERMINATOR,
 )
 
+# Wait time for close operations [sec].
+CLOSE_WAIT_TIME = 5
+
 
 class OneClientServer(BaseClientOrServer):
     """A TCP/IP socket server that serves a single client.
@@ -234,18 +237,26 @@ class OneClientServer(BaseClientOrServer):
         """
         try:
             try:
+                if self._writer is not None:
+                    self._writer.close()
+                    try:
+                        await asyncio.wait_for(
+                            self._writer.wait_closed(), CLOSE_WAIT_TIME
+                        )
+                    except asyncio.CancelledError:
+                        self.log.exception("failed to close writer; continuing")
                 if self._server is not None:
                     self.log.info("Closing the server.")
                     server = self._server
                     self._server = None
                     server.close()
-                    await server.wait_closed()
+                    await asyncio.wait_for(server.wait_closed(), CLOSE_WAIT_TIME)
             except Exception:
-                self.log.exception("close failed to close server; continuing")
+                self.log.exception("failed to close server; continuing")
             try:
                 await self.close_client()
             except Exception:
-                self.log.exception("close failed to close client; continuing")
+                self.log.exception("failed to close client; continuing")
         finally:
             self._monitor_connection_task.cancel()
             if not self.done_task.done():

@@ -6,6 +6,11 @@
 Version History
 ###############
 
+v2.1.0
+------
+
+* Code improvements for compatibility with both Python 3.11 and Python 3.12.
+
 v2.0.2
 ------
 
