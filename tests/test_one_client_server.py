@@ -165,8 +165,10 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             # Closing the client should not set done_task done.
             assert not server.done_task.done()
             await self.assert_next_connected(False)
-            assert client._reader.at_eof()
+
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
+                await client.readline()
+                assert client._reader.at_eof()
                 await client.readline()
 
             # Subsequent calls should have no effect
@@ -184,7 +186,9 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
             assert not server.connected
             assert server.done_task.done()
             await self.assert_next_connected(False)
+
             with pytest.raises((asyncio.IncompleteReadError, ConnectionError)):
+                await client.readline()
                 await client.readline()
 
             # Subsequent calls should have no effect
