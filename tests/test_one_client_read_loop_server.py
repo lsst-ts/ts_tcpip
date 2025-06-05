@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
+
 from lsst.ts import tcpip
 
 
@@ -43,4 +45,5 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                 else:
                     await self.assert_next_connected(False)
                     assert not server.connected
+                    await asyncio.sleep(0.1)
                     assert not client.connected

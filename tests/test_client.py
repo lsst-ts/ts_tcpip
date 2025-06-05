@@ -195,7 +195,7 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                     writer.encoding = encoding
                     writer.terminator = terminator
 
-                    write_str = "data with unicode \U0001F600 for read_str"
+                    write_str = "data with unicode \U0001f600 for read_str"
                     await writer.write_str(write_str)
                     read_str = await asyncio.wait_for(
                         reader.read_str(), timeout=TCP_TIMEOUT
@@ -217,7 +217,7 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                     )
                     assert read_bytes == write_bytes
 
-                    write_json = {"msg": "data with unicode \U0001F600 for read_json"}
+                    write_json = {"msg": "data with unicode \U0001f600 for read_json"}
                     await writer.write_json(write_json)
                     read_json = await asyncio.wait_for(
                         reader.read_json(), timeout=TCP_TIMEOUT

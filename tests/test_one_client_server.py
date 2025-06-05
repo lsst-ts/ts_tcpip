@@ -313,7 +313,11 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                 """
                 return await asyncio.open_connection(host=server.host, port=server.port)
 
-            tasks = [asyncio.create_task(open_connection()) for _ in range(num_clients)]
+            tasks = []
+            async with asyncio.TaskGroup() as tg:
+                for _ in range(num_clients):
+                    task = tg.create_task(open_connection())
+                    tasks.append(task)
             await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
             for task in tasks:
                 assert task.done()
