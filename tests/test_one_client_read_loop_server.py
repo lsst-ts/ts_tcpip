@@ -39,6 +39,7 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                 if i == num_good_writes:
                     server.fail_next_read = True
                 await client.write_str(line=test_line)
+                await asyncio.sleep(0.001)
                 if i < num_good_writes:
                     received_data = await server.get_next_data()
                     assert received_data == test_line
