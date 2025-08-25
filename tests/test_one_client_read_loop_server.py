@@ -46,5 +46,4 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                 else:
                     await self.assert_next_connected(False)
                     assert not server.connected
-                    await asyncio.sleep(0.1)
                     assert not client.connected
