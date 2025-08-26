@@ -22,6 +22,7 @@
 import asyncio
 import ctypes
 import logging
+import socket
 import unittest
 
 import numpy as np
@@ -166,3 +167,36 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         assert self.writer
         await self.check_read_write(reader=self.reader, writer=self.server._writer)
         await self.check_read_write(reader=self.server._reader, writer=self.writer)
+
+    async def test_set_socket_options(self) -> None:
+        assert self.server is not None
+
+        client = tcpip.Client(self.server.host, self.server.port, self.server.log)
+        await client.start_task
+        assert client.connected
+
+        # Make sure that the socket options have been set.
+        for writer in [self.server._writer, client._writer]:
+            sock = writer.get_extra_info("socket")
+            if hasattr(socket, "TCP_KEEPIDLE"):
+                # linux
+                assert (
+                    sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE)
+                    == tcpip.KEEPALIVE_TIME
+                )
+            elif hasattr(socket, "TCP_KEEPALIVE"):
+                # macOS
+                assert (
+                    sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPALIVE)
+                    == tcpip.KEEPALIVE_TIME
+                )
+            else:
+                self.fail("No option to set the keepalive time.")
+            assert (
+                sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT)
+                == tcpip.KEEPALIVE_PROBES
+            )
+            assert (
+                sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL)
+                == tcpip.KEEPALIVE_INTERVAL
+            )

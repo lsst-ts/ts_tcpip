@@ -19,11 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["close_stream_writer", "read_into", "write_from"]
+__all__ = ["close_stream_writer", "read_into", "set_socket_options", "write_from"]
 
 import asyncio
 import ctypes
 import logging
+import socket
+
+from .constants import KEEPALIVE_INTERVAL, KEEPALIVE_PROBES, KEEPALIVE_TIME
 
 log = logging.getLogger()
 
@@ -50,8 +53,7 @@ async def close_stream_writer(writer: asyncio.StreamWriter) -> None:
     """
     try:
         writer.close()
-        # Work around https://bugs.python.org/issue39758
-        await asyncio.wait_for(writer.wait_closed(), timeout=5)
+        await writer.wait_closed()
     except ConnectionError:
         log.info(
             f"wait_close({writer}) raised ConnectionError; "
@@ -82,6 +84,38 @@ async def read_into(reader: asyncio.StreamReader, struct: ctypes.Structure) -> N
     if not data:
         raise ConnectionError()
     ctypes.memmove(ctypes.addressof(struct), data, nbytes)
+
+
+async def set_socket_options(writer: asyncio.StreamWriter) -> None:
+    """Enable TCP keepalive on the socket.
+
+    See https://tewarid.github.io/2013/08/16/handling-tcp-keep-alive.html
+    """
+    sock = writer.get_extra_info("socket")
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+
+    # Overrides value shown by
+    # linux: sysctl net.ipv4.tcp_keepalive_time
+    # macos: sysctl net.inet.tcp.keepidle
+    # Interesting names of the constants in the socket module by the way.
+    if hasattr(socket, "TCP_KEEPIDLE"):
+        # linux
+        sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, KEEPALIVE_TIME)
+    elif hasattr(socket, "TCP_KEEPALIVE"):
+        # macOS
+        sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPALIVE, KEEPALIVE_TIME)
+    else:
+        raise RuntimeWarning("No option to set the keepalive time.")
+
+    # Overrides value shown by
+    # linux: sysctl net.ipv4.tcp_keepalive_probes
+    # macos: sysctl net.inet.tcp.keepcnt
+    sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, KEEPALIVE_PROBES)
+
+    # Overrides value shown by
+    # linux: sysctl net.ipv4.tcp_keepalive_intvl
+    # macos: sysctl net.inet.tcp.keepintvl
+    sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, KEEPALIVE_INTERVAL)
 
 
 async def write_from(writer: asyncio.StreamWriter, *structs: ctypes.Structure) -> None:
