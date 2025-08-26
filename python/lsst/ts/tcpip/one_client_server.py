@@ -61,7 +61,7 @@ class OneClientServer(BaseClientOrServer):
         Logger.
     connect_callback : callable or `None`, optional
         Asynchronous or (deprecated) synchronous function to call when
-        when a client connects or disconnects.
+        a client connects or disconnects.
         If the other end (client) closes the connection, it may take
         ``monitor_connection_interval`` seconds or longer to notice.
         The function receives one argument: this `OneClientServer`.
@@ -266,7 +266,7 @@ class OneClientServer(BaseClientOrServer):
         """Monitor to detect if the client drops the connection.
 
         Start this when the server is started.
-        Cancel this when this class is is closed.
+        Cancel this when this class is closed.
 
         Raises
         ------
@@ -302,9 +302,8 @@ class OneClientServer(BaseClientOrServer):
             # has not yet noticed.
             await self.close_client()
 
-        # Accept the connection
-        self._reader = reader
-        self._writer = writer
+        await super()._set_reader_writer(reader, writer)
+
         if not self.connected_task.done():
             self.connected_task.set_result(None)
         await self.call_connect_callback()
