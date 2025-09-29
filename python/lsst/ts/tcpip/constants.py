@@ -24,6 +24,7 @@ __all__ = [
     "DEFAULT_LOCALHOST",
     "DEFAULT_MONITOR_CONNECTION_INTERVAL",
     "DEFAULT_TERMINATOR",
+    "HEARTBEAT",
     "KEEPALIVE_INTERVAL",
     "KEEPALIVE_PROBES",
     "KEEPALIVE_TIME",
@@ -41,6 +42,9 @@ DEFAULT_TERMINATOR = b"\r\n"
 
 # Default interval between checks if the connection is alive (seconds)
 DEFAULT_MONITOR_CONNECTION_INTERVAL = 0.1
+
+# Heartbeat related constants.
+HEARTBEAT = b"heartbeat"
 
 # localhost constants for IPV4 and IPV6
 LOCALHOST_IPV4 = "127.0.0.1"

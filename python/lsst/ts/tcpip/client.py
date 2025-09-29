@@ -27,11 +27,14 @@ import asyncio
 import logging
 import typing
 
+from lsst.ts import utils
+
 from .base_client_or_server import BaseClientOrServer, ConnectCallbackType
 from .constants import (
     DEFAULT_ENCODING,
     DEFAULT_MONITOR_CONNECTION_INTERVAL,
     DEFAULT_TERMINATOR,
+    HEARTBEAT,
 )
 
 
@@ -71,6 +74,13 @@ class Client(BaseClientOrServer):
     terminator : `bytes`
         The terminator used by `read_str` and `write_str`, `read_json`,
          and `write_json`.
+    run_heartbeat_send_task : `bool`
+        Should the task to send heartbeats be started or not? The default
+        is False because the OneClientReadLoopServer delegates reading data
+        from the socket to subclasses and by default sending heartbeats would
+        be a breaking change.
+    heartbeat_send_sleep : `float`
+        The time [sec] between heartbeats. The default is 1.0 sec.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.open_connection`,
         beyond host and port.
@@ -120,10 +130,19 @@ class Client(BaseClientOrServer):
         name: str = "",
         encoding: str = DEFAULT_ENCODING,
         terminator: bytes = DEFAULT_TERMINATOR,
+        run_heartbeat_send_task: bool = False,
+        heartbeat_send_sleep: float = 1.0,
         **kwargs: typing.Any,
     ) -> None:
         self.host = host
         self.port = port
+
+        # Task to send heartbeats to the server.
+        self.heartbeat_send_task: asyncio.Future = utils.make_done_future()
+        # Should the heartbeats be sent or not?
+        self.run_heartbeat_send_task = run_heartbeat_send_task
+        # Time [sec] between heartbeats.
+        self.heartbeat_send_sleep = heartbeat_send_sleep
 
         super().__init__(
             log=log,
@@ -158,7 +177,19 @@ class Client(BaseClientOrServer):
         Call connect_callback if a client was connected.
         """
         self.should_be_connected = False
+        self.heartbeat_send_task.cancel()
         self._monitor_connection_task.cancel()
+
+        try:
+            await self.heartbeat_send_task
+        except asyncio.CancelledError:
+            pass
+
+        try:
+            await self._monitor_connection_task
+        except asyncio.CancelledError:
+            pass
+
         await self.basic_close()
 
     async def start(self, **kwargs: typing.Any) -> None:
@@ -179,6 +210,7 @@ class Client(BaseClientOrServer):
         `RuntimeError`
             If start already called.
         """
+        self.log.info(f"Client trying to connect to host={self.host}; port={self.port}")
         try:
             if self._reader is not None:
                 raise RuntimeError("Start already called.")
@@ -188,6 +220,13 @@ class Client(BaseClientOrServer):
             )
             await self._set_reader_writer(reader=reader, writer=writer)
             self._start_monitoring_connection()
+            if self.run_heartbeat_send_task:
+                self.heartbeat_send_task.cancel()
+                try:
+                    await self.heartbeat_send_task
+                except asyncio.CancelledError:
+                    pass
+                self.heartbeat_send_task = asyncio.create_task(self._send_heartbeat())
             await self.call_connect_callback()
             self.log.info(f"Client connected to host={self.host}; port={self.port}")
         except Exception as e:
@@ -210,3 +249,10 @@ class Client(BaseClientOrServer):
         while self.connected:
             await asyncio.sleep(self.monitor_connection_interval)
         await self._close_client()
+
+    async def _send_heartbeat(self) -> None:
+        """Periodically send a heartbeat to the server."""
+        assert self._writer is not None
+        while self.connected:
+            self._writer.write(HEARTBEAT + self.terminator)
+            await asyncio.sleep(self.heartbeat_send_sleep)

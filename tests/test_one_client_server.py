@@ -319,7 +319,6 @@ class OneClientServerTestCase(tcpip.BaseOneClientServerTestCase):
                     task = tg.create_task(open_connection())
                     tasks.append(task)
             await asyncio.wait_for(server.connected_task, timeout=CONNECTED_TIMEOUT)
-            await asyncio.sleep(0.001)
             for task in tasks:
                 assert task.done()
                 writers = [task.result()[1] for task in tasks]

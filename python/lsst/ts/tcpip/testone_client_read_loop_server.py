@@ -24,8 +24,16 @@ import logging
 from typing import Any
 
 from .base_client_or_server import ConnectCallbackType
-from .constants import DEFAULT_ENCODING, DEFAULT_LOCALHOST, DEFAULT_TERMINATOR
-from .one_client_read_loop_server import OneClientReadLoopServer
+from .constants import (
+    DEFAULT_ENCODING,
+    DEFAULT_LOCALHOST,
+    DEFAULT_TERMINATOR,
+    HEARTBEAT,
+)
+from .one_client_read_loop_server import (
+    DEFAULT_MAX_HEARTBEAT_INTERVAL,
+    OneClientReadLoopServer,
+)
 
 __all__ = ["TestOneClientReadLoopServer"]
 
@@ -62,6 +70,14 @@ class TestOneClientReadLoopServer(OneClientReadLoopServer):
     terminator : `bytes`
         The terminator used by `read_str` and `write_str`, `read_json`,
          and `write_json`.
+    run_heartbeat_monitor_task : `float`
+        Should the task to monitor heartbeats be started or not? The default
+        is False because the OneClientReadLoopServer delegates reading data
+        from the socket to subclasses and by default sending heartbeats would
+        be a breaking change.
+    max_heartbeat_interval : `float`
+        The max time [sec] between heartbeatsbefore the connection is assumed
+        to have dropped. The default is `DEFAULT_MAX_HEARTBEAT_INTERVAL` sec.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
@@ -77,6 +93,8 @@ class TestOneClientReadLoopServer(OneClientReadLoopServer):
         name: str = "",
         encoding: str = DEFAULT_ENCODING,
         terminator: bytes = DEFAULT_TERMINATOR,
+        run_heartbeat_monitor_task: bool = False,
+        max_heartbeat_interval: float = DEFAULT_MAX_HEARTBEAT_INTERVAL,
         **kwargs: Any,
     ) -> None:
         log = logging.getLogger()
@@ -88,6 +106,8 @@ class TestOneClientReadLoopServer(OneClientReadLoopServer):
             name=name,
             encoding=encoding,
             terminator=terminator,
+            run_heartbeat_monitor_task=run_heartbeat_monitor_task,
+            max_heartbeat_interval=max_heartbeat_interval,
             **kwargs,
         )
 
@@ -101,8 +121,14 @@ class TestOneClientReadLoopServer(OneClientReadLoopServer):
         if self.fail_next_read:
             self.fail_next_read = False
             raise ConnectionError("Mock connection error for unit tests.")
-        data = await self.read_str()
-        await self._data_queue.put(data)
+        try:
+            data = await self.read_str()
+        except asyncio.IncompleteReadError:
+            data = ""
+        if HEARTBEAT.decode() in data:
+            await self.handle_received_heartbeat()
+        else:
+            await self._data_queue.put(data)
 
     async def get_next_data(self) -> str:
         """Get the next data.
