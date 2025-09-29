@@ -8,6 +8,28 @@ Version History
 
 .. towncrier release notes start
 
+v2.2.0 (2025-09-29)
+===================
+
+New Features
+------------
+
+- Added optional heartbeat mechanism. (`OSW-911 <https://rubinobs.atlassian.net//browse/OSW-911>`_)
+- Switched to towncrier and ruff. (`OSW-931 <https://rubinobs.atlassian.net//browse/OSW-931>`_)
+
+
+Bug Fixes
+---------
+
+- Fixed version module import. (`OSW-931 <https://rubinobs.atlassian.net//browse/OSW-931>`_)
+
+
+Performance Enhancement
+-----------------------
+
+- Set lower TCP/IP keepalive options. (`OSW-931 <https://rubinobs.atlassian.net//browse/OSW-931>`_)
+
+
 v2.1.0
 ------
 
