@@ -20,3 +20,5 @@ pytest_session.txt
 .flake8
 .isort.cfg
 .mypy.ini
+.ruff.toml
+towncrier.toml

@@ -58,7 +58,7 @@ class BaseClientOrServer(abc.ABC):
         Asynchronous function to call when the connection state changes.
         The function receives one argument: this `BaseClientOrServer`.
 
-        Note: if the connection is unexpectedly lost and you are not reading
+        Note: if the connection is unexpectedly lost, and you are not reading
         from the socket, it may take ``monitor_connection_interval`` seconds
         or longer to notice.
     monitor_connection_interval : `float`, optional
@@ -249,7 +249,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._reader is not None  # make mypy happy
+        assert self._reader is not None
         try:
             return await self._reader.read(n)
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -275,7 +275,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._reader is not None  # make mypy happy
+        assert self._reader is not None
         try:
             return await self._reader.readexactly(n)
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -295,7 +295,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._reader is not None  # make mypy happy
+        assert self._reader is not None
         try:
             return await self._reader.readline()
         except ConnectionError:
@@ -332,7 +332,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._reader is not None  # make mypy happy
+        assert self._reader is not None
         try:
             return await self._reader.readuntil(separator)
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -358,7 +358,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._reader is not None  # make mypy happy
+        assert self._reader is not None
         try:
             await utils.read_into(reader=self._reader, struct=struct)
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -443,7 +443,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._writer is not None  # make mypy happy
+        assert self._writer is not None
         self._writer.write(data)
         await self._writer.drain()
 
@@ -462,7 +462,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._writer is not None  # make mypy happy
+        assert self._writer is not None
         self._writer.writelines(lines)
         await self._writer.drain()
 
@@ -481,7 +481,7 @@ class BaseClientOrServer(abc.ABC):
         """
         if not self.connected:
             raise ConnectionError("Not connected")
-        assert self._writer is not None  # make mypy happy
+        assert self._writer is not None
         await utils.write_from(self._writer, *structs)
 
     async def write_str(self, line: str) -> None:
@@ -513,7 +513,7 @@ class BaseClientOrServer(abc.ABC):
         Parameters
         ----------
         data : `any`
-            The data to be written. Typically a dict,
+            The data to be written, typically a dict,
             but any json-encodable data is acceptable.
 
         Raises
@@ -605,6 +605,8 @@ class BaseClientOrServer(abc.ABC):
         self.should_be_connected = True
         self._reader = reader
         self._writer = writer
+
+        await utils.set_socket_options(self._writer)
 
     async def __aenter__(self) -> BaseClientOrServer:
         await self.start_task

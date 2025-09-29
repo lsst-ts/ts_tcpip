@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import asyncio
+
 from lsst.ts import tcpip
 
 
@@ -37,6 +39,7 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                 if i == num_good_writes:
                     server.fail_next_read = True
                 await client.write_str(line=test_line)
+                await asyncio.sleep(0.1)
                 if i < num_good_writes:
                     received_data = await server.get_next_data()
                     assert received_data == test_line
@@ -44,3 +47,51 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                     await self.assert_next_connected(False)
                     assert not server.connected
                     assert not client.connected
+
+    async def test_expected_heartbeat(self) -> None:
+        async with self.create_server(
+            connect_callback=self.connect_callback,
+            run_heartbeat_monitor_task=True,
+        ) as server, self.create_client(server, run_heartbeat_send_task=True):
+            await self.assert_next_connected(True)
+            assert not server.read_loop_task.done()
+
+            await asyncio.sleep(0.1)
+            # The read_loop_task should not be done because the client
+            # sends a heartbeat and the server expects it..
+            assert not server.read_loop_task.done()
+            assert server.connected
+
+    async def test_unexpected_heartbeat(self) -> None:
+        async with self.create_server(
+            connect_callback=self.connect_callback
+        ) as server, self.create_client(server, run_heartbeat_send_task=True):
+            await self.assert_next_connected(True)
+            assert not server.read_loop_task.done()
+
+            await asyncio.sleep(0.1)
+            # The read_loop_task should be done because the client
+            # unexpectedly sends a heartbeat.
+            assert server.read_loop_task.done()
+            assert not server.connected
+
+    async def test_no_heartbeat_received(self) -> None:
+        async with self.create_server(
+            connect_callback=self.connect_callback,
+            run_heartbeat_monitor_task=True,
+            max_heartbeat_interval=1.0,
+        ) as server, self.create_client(server):
+            await self.assert_next_connected(True)
+            assert not server.read_loop_task.done()
+
+            await asyncio.sleep(0.1)
+            # The read_loop_task should not be done because the client
+            # has not yet had the opportunity to send a heartbeat.
+            assert not server.read_loop_task.done()
+            assert server.connected
+
+            await asyncio.sleep(1.1)
+            # The read_loop_task should be done because the client
+            # did not send a heartbeat.
+            assert server.read_loop_task.done()
+            assert not server.connected

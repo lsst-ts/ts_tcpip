@@ -26,11 +26,20 @@ import asyncio
 import logging
 import typing
 
+from lsst.ts import utils
+
 from .base_client_or_server import ConnectCallbackType
 from .constants import DEFAULT_ENCODING, DEFAULT_LOCALHOST, DEFAULT_TERMINATOR
 from .one_client_server import OneClientServer
 
-__all__ = ["OneClientReadLoopServer"]
+__all__ = ["OneClientReadLoopServer", "DEFAULT_MAX_HEARTBEAT_INTERVAL"]
+
+# Default maximum time [sec] between heartbeats before assuming that the
+# connection has been dropped.
+DEFAULT_MAX_HEARTBEAT_INTERVAL = 10.0
+
+# Heartbeat monitor interval [sec].
+HEARTBEAT_MONITOR_INTERVAL = 1.0
 
 
 class OneClientReadLoopServer(OneClientServer):
@@ -65,6 +74,14 @@ class OneClientReadLoopServer(OneClientServer):
     terminator : `bytes`
         The terminator used by `read_str` and `write_str`, `read_json`,
          and `write_json`.
+    run_heartbeat_monitor_task : `bool`
+        Should the task to monitor heartbeats be started or not? The default
+        is False because the OneClientReadLoopServer delegates reading data
+        from the socket to subclasses and by default sending heartbeats would
+        be a breaking change.
+    max_heartbeat_interval : `float`
+        The max time [sec] between heartbeatsbefore the connection is assumed
+        to have dropped. The default is `DEFAULT_MAX_HEARTBEAT_INTERVAL` sec.
     **kwargs : `dict` [`str`, `typing.Any`]
         Additional keyword arguments for `asyncio.start_server`,
         beyond host and port.
@@ -87,9 +104,11 @@ class OneClientReadLoopServer(OneClientServer):
         name: str = "",
         encoding: str = DEFAULT_ENCODING,
         terminator: bytes = DEFAULT_TERMINATOR,
+        run_heartbeat_monitor_task: bool = False,
+        max_heartbeat_interval: float = DEFAULT_MAX_HEARTBEAT_INTERVAL,
         **kwargs: typing.Any,
     ) -> None:
-        self.read_loop_task: asyncio.Future = asyncio.Future()
+        self.read_loop_task = utils.make_done_future()
 
         super().__init__(
             host=host,
@@ -103,13 +122,41 @@ class OneClientReadLoopServer(OneClientServer):
             **kwargs,
         )
 
+        # Should the task to monitor heartbeats be started or not?
+        self.run_heartbeat_monitor_task = run_heartbeat_monitor_task
+        # Maximum time [sec] between heartbeats before assuming that the
+        # connection has been dropped.
+        self.max_heartbeat_interval = max_heartbeat_interval
+        # TAI UNIX timestamp [sec] at which the latest heartbeat was received.
+        self.heartbeat_received_tai: float | None = None
+        # Monitor received heartbeats.
+        self.monitor_heartbeats_task = utils.make_done_future()
+        # Start time [TAI sec] of the monitor received heartbeats task.
+        self.monitor_heartbeats_task_start: float | None = None
+
     async def call_connect_callback(self) -> None:
         """A client has connected or disconnected."""
         await super().call_connect_callback()
         if self.connected:
             self.log.info("Client connected.")
             self.read_loop_task.cancel()
+            self.monitor_heartbeats_task.cancel()
+
+            try:
+                await self.read_loop_task
+            except asyncio.CancelledError:
+                pass
+
+            try:
+                await self.monitor_heartbeats_task
+            except asyncio.CancelledError:
+                pass
+
             self.read_loop_task = asyncio.create_task(self.read_loop())
+            if self.run_heartbeat_monitor_task:
+                self.monitor_heartbeats_task = asyncio.create_task(
+                    self.monitor_received_heartbeats()
+                )
         else:
             self.log.info("Client disconnected.")
 
@@ -142,6 +189,62 @@ class OneClientReadLoopServer(OneClientServer):
         """
         raise NotImplementedError()
 
+    async def handle_received_heartbeat(self) -> None:
+        """Handle a received heartbeat.
+
+        Raises
+        ------
+        RuntimeError
+            In case a heartbeat is received but
+            run_heartbeat_monitor_task is False.
+        """
+        if not self.run_heartbeat_monitor_task:
+            raise RuntimeError(
+                "Unexpectedly received a heartbeat. Please set `run_heartbeat_monitor_task` to True."
+            )
+        self.heartbeat_received_tai = utils.current_tai()
+
+    async def monitor_received_heartbeats(self) -> None:
+        """Monitor received heartbeats.
+
+        Assume that the connection has dropped if no heartbeat was received
+        for too long.
+        """
+        monitor_heartbeats_task_start = utils.current_tai()
+
+        # Wait until the server starts receiving heartbeats.
+        while self.heartbeat_received_tai is None:
+            if (
+                utils.current_tai() - monitor_heartbeats_task_start
+                >= self.max_heartbeat_interval
+            ):
+                self.log.debug("No heartbeat received after client connected.")
+                break
+            await asyncio.sleep(HEARTBEAT_MONITOR_INTERVAL)
+
+        # If the server has received at least one heartbeat then make sure
+        # that is keeps happening. If the server still hasn't received a
+        # heartbeat then the next loop will immediately stop.
+        if self.heartbeat_received_tai is not None:
+            while (
+                utils.current_tai() - self.heartbeat_received_tai
+                < self.max_heartbeat_interval
+            ):
+                self.log.debug(
+                    f"Received heartbeat. Sleeping for {HEARTBEAT_MONITOR_INTERVAL} sec."
+                )
+                await asyncio.sleep(HEARTBEAT_MONITOR_INTERVAL)
+
+        # No heartbeat received for too long so assume the client connection
+        # has dropped.
+        self.log.warning(
+            f"No heartbeat received for more than {self.max_heartbeat_interval} seconds. "
+            "Assuming the connection with the client has dropped."
+        )
+
+        self.heartbeat_received_tai = None
+        await self.close_client()
+
     async def close_client(self, cancel_read_loop_task: bool = True) -> None:
         """Stop the read loop and close the client.
 
@@ -154,5 +257,9 @@ class OneClientReadLoopServer(OneClientServer):
         if cancel_read_loop_task:
             self.log.debug("Cancelling read_loop_task.")
             self.read_loop_task.cancel()
+            try:
+                await self.read_loop_task
+            except asyncio.CancelledError:
+                pass
         self.log.debug("Closing client.")
         await super().close_client()
