@@ -130,7 +130,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             kwargs.setdefault("host", DEFAULT_LOCALHOST)
         self.connect_queue = asyncio.Queue()
         async with self.server_class(port=0, log=self.log, **kwargs) as server:
-            yield server  # type: ignore # mypy bug?
+            yield server  # type: ignore
 
     @contextlib.asynccontextmanager
     async def create_client(
@@ -163,4 +163,4 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         ) as client:
             if wait_connected:
                 await asyncio.wait_for(server.connected_task, timeout=STD_TIMEOUT)
-            yield client  # type: ignore # mypy bug?
+            yield client  # type: ignore

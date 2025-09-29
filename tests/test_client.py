@@ -245,21 +245,31 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_close(self) -> None:
         """Test Client.close"""
-        async with self.create_server() as server, self.create_client(
-            server, connect_callback=self.connect_callback
-        ) as client:
-            await self.assert_next_connected(True)
-            assert not client.done_task.done()
+        for heartbeat in [True, False]:
+            async with self.create_server() as server, self.create_client(
+                server,
+                connect_callback=self.connect_callback,
+                run_heartbeat_send_task=heartbeat,
+            ) as client:
+                await self.assert_next_connected(True)
+                assert not client.done_task.done()
+                if heartbeat:
+                    assert not client.heartbeat_send_task.done()
+                    data = await server.readline()
+                    assert tcpip.HEARTBEAT in data
+                else:
+                    assert client.heartbeat_send_task.done()
 
-            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
-            assert not client.connected
-            assert not client.should_be_connected
-            assert client.done_task.done()
-            await self.assert_next_connected(False)
-            await self.check_read_write_not_connected(client)
+                await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
+                assert not client.connected
+                assert not client.should_be_connected
+                assert client.done_task.done()
+                assert client.heartbeat_send_task.done()
+                await self.assert_next_connected(False)
+                await self.check_read_write_not_connected(client)
 
-            # Subsequent calls should have no effect
-            await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
+                # Subsequent calls should have no effect
+                await asyncio.wait_for(client.close(), timeout=TCP_TIMEOUT)
 
     async def test_connect_callback_raises(self) -> None:
         self.connect_callback_raises = True
