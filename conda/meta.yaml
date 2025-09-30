@@ -33,4 +33,4 @@ requirements:
     - setuptools_scm
   run:
     - python {{ python }}
-    - ts_utils
+    - ts-utils
