@@ -8,6 +8,15 @@ Version History
 
 .. towncrier release notes start
 
+v2.2.1 (2025-09-30)
+===================
+
+Bug Fixes
+---------
+
+- Fixed the conda build. (`OSW-931 <https://rubinobs.atlassian.net//browse/OSW-931>`_)
+
+
 v2.2.0 (2025-09-29)
 ===================
 
