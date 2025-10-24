@@ -192,8 +192,7 @@ class OneClientServer(BaseClientOrServer):
             self.port = self._server.sockets[0].getsockname()[1]  # type: ignore
         self._start_monitoring_connection()
         self.log.info(
-            f"Server running: host={self.host}; port={self.port}; "
-            f"listening on {num_sockets} sockets"
+            f"Server running: host={self.host}; port={self.port}; listening on {num_sockets} sockets"
         )
 
     async def basic_close_client(self) -> None:
@@ -240,9 +239,7 @@ class OneClientServer(BaseClientOrServer):
                 if self._writer is not None:
                     self._writer.close()
                     try:
-                        await asyncio.wait_for(
-                            self._writer.wait_closed(), CLOSE_WAIT_TIME
-                        )
+                        await asyncio.wait_for(self._writer.wait_closed(), CLOSE_WAIT_TIME)
                     except asyncio.CancelledError:
                         self.log.exception("failed to close writer; continuing")
                 if self._server is not None:
@@ -278,9 +275,7 @@ class OneClientServer(BaseClientOrServer):
                 await self._close_client()
             await asyncio.sleep(self.monitor_connection_interval)
 
-    async def _set_reader_writer(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    async def _set_reader_writer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Set self._reader and self._writer.
 
         Called when a client connects to this server.

@@ -101,9 +101,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             await tcpip.close_stream_writer(self.writer)
         await self.server.close()
 
-    async def check_read_write(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    async def check_read_write(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         # Write at least 2 sets of data,
         # to detect extra data being written.
         for i in range(2):
@@ -111,15 +109,12 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             await tcpip.write_from(writer, data)
             read_data = SampleStruct()
             await tcpip.read_into(reader, read_data)
-            for field_name, c_type in data._fields_:
+            for field_name, c_type in data._fields_:  # type: ignore[misc]
                 try:
                     # array
                     nelts = len(getattr(data, field_name))
                     assert nelts == ARRAY_LEN
-                    assert (
-                        getattr(data, field_name)[:]
-                        == getattr(read_data, field_name)[:]
-                    )
+                    assert getattr(data, field_name)[:] == getattr(read_data, field_name)[:]
                 except TypeError:
                     # scalar
                     assert getattr(data, field_name) == getattr(read_data, field_name)
@@ -129,7 +124,7 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
         # so don't bother to try
         max_rand_int = np.iinfo(np.int64).max
         data = SampleStruct()
-        for field_name, c_type in data._fields_:
+        for field_name, c_type in data._fields_:  # type: ignore[misc]
             dtype = np.dtype(c_type)  # type: ignore
             if dtype.subdtype is None:
                 scalar_dtype = dtype
@@ -180,23 +175,11 @@ class UtilsTestCase(unittest.IsolatedAsyncioTestCase):
             sock = writer.get_extra_info("socket")
             if hasattr(socket, "TCP_KEEPIDLE"):
                 # linux
-                assert (
-                    sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE)
-                    == tcpip.utils.KEEPALIVE_TIME
-                )
+                assert sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE) == tcpip.utils.KEEPALIVE_TIME
             elif hasattr(socket, "TCP_KEEPALIVE"):
                 # macOS
-                assert (
-                    sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPALIVE)
-                    == tcpip.utils.KEEPALIVE_TIME
-                )
+                assert sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPALIVE) == tcpip.utils.KEEPALIVE_TIME
             else:
                 self.fail("No option to set the keepalive time.")
-            assert (
-                sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT)
-                == tcpip.utils.KEEPALIVE_PROBES
-            )
-            assert (
-                sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL)
-                == tcpip.utils.KEEPALIVE_INTERVAL
-            )
+            assert sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT) == tcpip.utils.KEEPALIVE_PROBES
+            assert sock.getsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL) == tcpip.utils.KEEPALIVE_INTERVAL

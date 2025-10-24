@@ -55,9 +55,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         self.connect_queue: asyncio.Queue | None = None
         super().run(result=result)
 
-    async def assert_next_connected(
-        self, connected: bool, timeout: int = STD_TIMEOUT
-    ) -> None:
+    async def assert_next_connected(self, connected: bool, timeout: int = STD_TIMEOUT) -> None:
         """Assert results of next connect_callback.
 
         This only works if you specify:
@@ -87,9 +85,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         """
         if self.connect_queue is None:
             raise RuntimeError("You must call create_server")
-        next_connected = await asyncio.wait_for(
-            self.connect_queue.get(), timeout=timeout
-        )
+        next_connected = await asyncio.wait_for(self.connect_queue.get(), timeout=timeout)
         assert connected == next_connected
 
     async def connect_callback(self, server: BaseClientOrServer) -> None:
@@ -103,9 +99,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         self.connect_queue.put_nowait(server.connected)
 
     @contextlib.asynccontextmanager
-    async def create_server(
-        self, **kwargs: Any
-    ) -> AsyncGenerator[OneClientServer, None]:
+    async def create_server(self, **kwargs: Any) -> AsyncGenerator[OneClientServer, None]:
         """Create a server of the class being tested.
 
         Parameters
@@ -121,9 +115,7 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
             (it defaults to None, which is not a valid value).
         """
         if self.server_class is None:
-            raise RuntimeError(
-                "You must set class variable server_class to OneClientServer or a subclass"
-            )
+            raise RuntimeError("You must set class variable server_class to OneClientServer or a subclass")
         if self.server_class is OneClientServer:
             # OneClientServer requires the host argument
             # (for backwards compatibility with ts_tcpip 1.0).
@@ -155,12 +147,8 @@ class BaseOneClientServerTestCase(unittest.IsolatedAsyncioTestCase):
         client : `tcpip.Client`
             The TCP/IP client.
         """
-        assert (
-            server is not None
-        ), "You must call create_server before calling create_client"
-        async with Client(
-            host=server.host, port=server.port, log=self.log, **kwargs
-        ) as client:
+        assert server is not None, "You must call create_server before calling create_client"
+        async with Client(host=server.host, port=server.port, log=self.log, **kwargs) as client:
             if wait_connected:
                 await asyncio.wait_for(server.connected_task, timeout=STD_TIMEOUT)
             yield client  # type: ignore
