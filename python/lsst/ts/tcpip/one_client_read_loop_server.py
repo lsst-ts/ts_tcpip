@@ -154,9 +154,7 @@ class OneClientReadLoopServer(OneClientServer):
 
             self.read_loop_task = asyncio.create_task(self.read_loop())
             if self.run_heartbeat_monitor_task:
-                self.monitor_heartbeats_task = asyncio.create_task(
-                    self.monitor_received_heartbeats()
-                )
+                self.monitor_heartbeats_task = asyncio.create_task(self.monitor_received_heartbeats())
         else:
             self.log.info("Client disconnected.")
 
@@ -214,10 +212,7 @@ class OneClientReadLoopServer(OneClientServer):
 
         # Wait until the server starts receiving heartbeats.
         while self.heartbeat_received_tai is None:
-            if (
-                utils.current_tai() - monitor_heartbeats_task_start
-                >= self.max_heartbeat_interval
-            ):
+            if utils.current_tai() - monitor_heartbeats_task_start >= self.max_heartbeat_interval:
                 self.log.debug("No heartbeat received after client connected.")
                 break
             await asyncio.sleep(HEARTBEAT_MONITOR_INTERVAL)
@@ -226,13 +221,8 @@ class OneClientReadLoopServer(OneClientServer):
         # that is keeps happening. If the server still hasn't received a
         # heartbeat then the next loop will immediately stop.
         if self.heartbeat_received_tai is not None:
-            while (
-                utils.current_tai() - self.heartbeat_received_tai
-                < self.max_heartbeat_interval
-            ):
-                self.log.debug(
-                    f"Received heartbeat. Sleeping for {HEARTBEAT_MONITOR_INTERVAL} sec."
-                )
+            while utils.current_tai() - self.heartbeat_received_tai < self.max_heartbeat_interval:
+                self.log.debug(f"Received heartbeat. Sleeping for {HEARTBEAT_MONITOR_INTERVAL} sec.")
                 await asyncio.sleep(HEARTBEAT_MONITOR_INTERVAL)
 
         # No heartbeat received for too long so assume the client connection

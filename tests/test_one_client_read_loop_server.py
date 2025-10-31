@@ -29,9 +29,10 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
 
     async def test_read_and_dispatch(self) -> None:
         num_good_writes = 5
-        async with self.create_server(
-            connect_callback=self.connect_callback
-        ) as server, self.create_client(server) as client:
+        async with (
+            self.create_server(connect_callback=self.connect_callback) as server,
+            self.create_client(server) as client,
+        ):
             await self.assert_next_connected(True)
             for i in range(num_good_writes + 1):
                 print(f"{i=}; {client.connected=}")
@@ -49,10 +50,13 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
                     assert not client.connected
 
     async def test_expected_heartbeat(self) -> None:
-        async with self.create_server(
-            connect_callback=self.connect_callback,
-            run_heartbeat_monitor_task=True,
-        ) as server, self.create_client(server, run_heartbeat_send_task=True):
+        async with (
+            self.create_server(
+                connect_callback=self.connect_callback,
+                run_heartbeat_monitor_task=True,
+            ) as server,
+            self.create_client(server, run_heartbeat_send_task=True),
+        ):
             await self.assert_next_connected(True)
             assert not server.read_loop_task.done()
 
@@ -63,9 +67,10 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
             assert server.connected
 
     async def test_unexpected_heartbeat(self) -> None:
-        async with self.create_server(
-            connect_callback=self.connect_callback
-        ) as server, self.create_client(server, run_heartbeat_send_task=True):
+        async with (
+            self.create_server(connect_callback=self.connect_callback) as server,
+            self.create_client(server, run_heartbeat_send_task=True),
+        ):
             await self.assert_next_connected(True)
             assert not server.read_loop_task.done()
 
@@ -76,11 +81,14 @@ class OneClientReadLoopServerTestCase(tcpip.BaseOneClientServerTestCase):
             assert not server.connected
 
     async def test_no_heartbeat_received(self) -> None:
-        async with self.create_server(
-            connect_callback=self.connect_callback,
-            run_heartbeat_monitor_task=True,
-            max_heartbeat_interval=1.0,
-        ) as server, self.create_client(server):
+        async with (
+            self.create_server(
+                connect_callback=self.connect_callback,
+                run_heartbeat_monitor_task=True,
+                max_heartbeat_interval=1.0,
+            ) as server,
+            self.create_client(server),
+        ):
             await self.assert_next_connected(True)
             assert not server.read_loop_task.done()
 

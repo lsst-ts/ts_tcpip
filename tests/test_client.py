@@ -88,14 +88,9 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
             await client.writelines([b" ", b"\n"])
 
         # Check that StreamReader.readline reads 0 bytes if disconnected
-        assert (
-            await asyncio.wait_for(client._reader.readline(), timeout=TCP_TIMEOUT)
-            == b""
-        )
+        assert await asyncio.wait_for(client._reader.readline(), timeout=TCP_TIMEOUT) == b""
 
-    async def assert_next_connected(
-        self, connected: bool, timeout: int = TCP_TIMEOUT
-    ) -> None:
+    async def assert_next_connected(self, connected: bool, timeout: int = TCP_TIMEOUT) -> None:
         """Assert results of next connect_callback.
 
         Parameters
@@ -105,9 +100,7 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         timeout : `float`
             Time to wait for connect_callback (seconds).
         """
-        next_connected = await asyncio.wait_for(
-            self.connect_queue.get(), timeout=timeout
-        )
+        next_connected = await asyncio.wait_for(self.connect_queue.get(), timeout=timeout)
         assert connected == next_connected
 
     async def check_read_write_methods(
@@ -125,34 +118,26 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         """
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n=len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
-        read_bytes = await asyncio.wait_for(
-            reader.read(n=len(write_bytes)), timeout=TCP_TIMEOUT
-        )
+        read_bytes = await asyncio.wait_for(reader.read(n=len(write_bytes)), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes
 
         nextra = 5  # extra bytes to wait for; an arbitrary positive value
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n>len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
-        read_bytes = await asyncio.wait_for(
-            reader.read(n=len(write_bytes) + nextra), timeout=TCP_TIMEOUT
-        )
+        read_bytes = await asyncio.wait_for(reader.read(n=len(write_bytes) + nextra), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes
 
         nskip = 5  # arbitrary positive value smaller than the data len
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for read with n<len"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
-        read_bytes = await asyncio.wait_for(
-            reader.read(n=len(write_bytes) - nskip), timeout=TCP_TIMEOUT
-        )
+        read_bytes = await asyncio.wait_for(reader.read(n=len(write_bytes) - nskip), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes[0:-nskip]
         read_bytes = await asyncio.wait_for(reader.read(nskip), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes[-nskip:]
 
         write_bytes = b"data with unicode \xf0\x9f\x98\x80 for readexactly"
         await asyncio.wait_for(writer.write(write_bytes), timeout=TCP_TIMEOUT)
-        read_bytes = await asyncio.wait_for(
-            reader.readexactly(n=len(write_bytes)), timeout=TCP_TIMEOUT
-        )
+        read_bytes = await asyncio.wait_for(reader.readexactly(n=len(write_bytes)), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes
 
         write_bytes = b"terminated data with unicode \xf0\x9f\x98\x80 for readline\n"
@@ -161,22 +146,17 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         assert read_bytes == write_bytes
 
         write_bytes = (
-            b"terminated data with unicode \xf0\x9f\x98\x80 for readuntil"
-            + tcpip.DEFAULT_TERMINATOR
+            b"terminated data with unicode \xf0\x9f\x98\x80 for readuntil" + tcpip.DEFAULT_TERMINATOR
         )
         await writer.write(write_bytes)
-        read_bytes = await asyncio.wait_for(
-            reader.readuntil(tcpip.DEFAULT_TERMINATOR), timeout=TCP_TIMEOUT
-        )
+        read_bytes = await asyncio.wait_for(reader.readuntil(tcpip.DEFAULT_TERMINATOR), timeout=TCP_TIMEOUT)
         assert read_bytes == write_bytes
 
         write_struct = ShortStruct(ushort_0=1, int64_0=2, double_0=3.3, float_0=4.4)
         read_struct = ShortStruct()
         await asyncio.wait_for(writer.write_from(write_struct), timeout=TCP_TIMEOUT)
-        read_bytes = await asyncio.wait_for(
-            reader.read_into(read_struct), timeout=TCP_TIMEOUT
-        )
-        for field_name, c_type in read_struct._fields_:
+        read_bytes = await asyncio.wait_for(reader.read_into(read_struct), timeout=TCP_TIMEOUT)
+        for field_name, c_type in read_struct._fields_:  # type: ignore[misc]
             assert getattr(read_struct, field_name) == getattr(write_struct, field_name)
 
         assert reader.encoding == writer.encoding
@@ -197,31 +177,23 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
 
                     write_str = "data with unicode \U0001f600 for read_str"
                     await writer.write_str(write_str)
-                    read_str = await asyncio.wait_for(
-                        reader.read_str(), timeout=TCP_TIMEOUT
-                    )
+                    read_str = await asyncio.wait_for(reader.read_str(), timeout=TCP_TIMEOUT)
                     assert read_str == write_str
 
                     # Make sure the reader and writer are truly using
                     # the desired encoding and terminator.
                     write_bytes = write_str.encode(encoding) + terminator
                     await writer.write(write_bytes)
-                    read_str = await asyncio.wait_for(
-                        reader.read_str(), timeout=TCP_TIMEOUT
-                    )
+                    read_str = await asyncio.wait_for(reader.read_str(), timeout=TCP_TIMEOUT)
                     assert read_str == write_str
 
                     await writer.write_str(write_str)
-                    read_bytes = await asyncio.wait_for(
-                        reader.readuntil(terminator), timeout=TCP_TIMEOUT
-                    )
+                    read_bytes = await asyncio.wait_for(reader.readuntil(terminator), timeout=TCP_TIMEOUT)
                     assert read_bytes == write_bytes
 
                     write_json = {"msg": "data with unicode \U0001f600 for read_json"}
                     await writer.write_json(write_json)
-                    read_json = await asyncio.wait_for(
-                        reader.read_json(), timeout=TCP_TIMEOUT
-                    )
+                    read_json = await asyncio.wait_for(reader.read_json(), timeout=TCP_TIMEOUT)
                     assert read_json == write_json
         finally:
             reader.encoding = initial_encoding
@@ -230,9 +202,10 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
             writer.terminator = initial_terminator
 
     async def test_basic_close(self) -> None:
-        async with self.create_server() as server, self.create_client(
-            server, connect_callback=self.connect_callback
-        ) as client:
+        async with (
+            self.create_server() as server,
+            self.create_client(server, connect_callback=self.connect_callback) as client,
+        ):
             await self.assert_next_connected(True)
             assert not client.done_task.done()
 
@@ -246,11 +219,14 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
     async def test_close(self) -> None:
         """Test Client.close"""
         for heartbeat in [True, False]:
-            async with self.create_server() as server, self.create_client(
-                server,
-                connect_callback=self.connect_callback,
-                run_heartbeat_send_task=heartbeat,
-            ) as client:
+            async with (
+                self.create_server() as server,
+                self.create_client(
+                    server,
+                    connect_callback=self.connect_callback,
+                    run_heartbeat_send_task=heartbeat,
+                ) as client,
+            ):
                 await self.assert_next_connected(True)
                 assert not client.done_task.done()
                 if heartbeat:
@@ -294,9 +270,7 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
     async def test_initial_conditions(self) -> None:
         async with self.create_server(host=tcpip.LOCALHOST_IPV4) as server:
             assert server.port != 0
-            async with self.create_client(
-                server, connect_callback=self.connect_callback
-            ) as client:
+            async with self.create_client(server, connect_callback=self.connect_callback) as client:
                 assert client.connected
                 assert server.connected
                 await self.assert_next_connected(True)
@@ -305,20 +279,15 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
         for localhost in (tcpip.LOCALHOST_IPV4, tcpip.LOCALHOST_IPV6):
             with self.subTest(localhost=localhost):
                 try:
-                    async with self.create_server(
-                        host=localhost
-                    ) as server, self.create_client(server) as client:
-                        await self.check_read_write_methods(
-                            reader=client, writer=server
-                        )
-                        await self.check_read_write_methods(
-                            reader=server, writer=client
-                        )
+                    async with (
+                        self.create_server(host=localhost) as server,
+                        self.create_client(server) as client,
+                    ):
+                        await self.check_read_write_methods(reader=client, writer=server)
+                        await self.check_read_write_methods(reader=server, writer=client)
                 except OSError:
                     if localhost == tcpip.LOCALHOST_IPV6:
-                        raise unittest.SkipTest(
-                            "The test framework does not support IPV6"
-                        )
+                        raise unittest.SkipTest("The test framework does not support IPV6")
                     else:
                         raise
 
@@ -331,9 +300,10 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                 await server.read_json()
 
     async def test_server_drops_connection(self) -> None:
-        async with self.create_server() as server, self.create_client(
-            server, connect_callback=self.connect_callback
-        ) as client:
+        async with (
+            self.create_server() as server,
+            self.create_client(server, connect_callback=self.connect_callback) as client,
+        ):
             await self.assert_next_connected(True)
 
             await asyncio.wait_for(server.close_client(), timeout=TCP_TIMEOUT)
@@ -362,9 +332,7 @@ class ClientTestCase(tcpip.BaseOneClientServerTestCase):
                     assert client.encoding == good_encoding
 
             for good_terminator in (b"\r\n", b"\r", b"any bytes"):
-                async with self.create_client(
-                    server, terminator=good_terminator
-                ) as client:
+                async with self.create_client(server, terminator=good_terminator) as client:
                     assert client.terminator == good_terminator
 
             for bad_encoding in ("no_such_encoder", b"utf_8"):

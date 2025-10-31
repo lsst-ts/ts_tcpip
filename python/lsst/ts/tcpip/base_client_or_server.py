@@ -153,9 +153,7 @@ class BaseClientOrServer(abc.ABC):
         terminator: bytes = DEFAULT_TERMINATOR,
         **kwargs: typing.Any,
     ) -> None:
-        if connect_callback is not None and not inspect.iscoroutinefunction(
-            connect_callback
-        ):
+        if connect_callback is not None and not inspect.iscoroutinefunction(connect_callback):
             raise TypeError("connect_callback must be asynchronous")
         if not isinstance(terminator, bytes):
             raise ValueError(f"{terminator=!r} must be a bytes")
@@ -203,10 +201,7 @@ class BaseClientOrServer(abc.ABC):
         true for some unknown time after the connection has been dropped.
         """
         return not (
-            self._reader is None
-            or self._writer is None
-            or self._reader.at_eof()
-            or self._writer.is_closing()
+            self._reader is None or self._writer is None or self._reader.at_eof() or self._writer.is_closing()
         )
 
     async def call_connect_callback(self) -> None:
@@ -217,9 +212,7 @@ class BaseClientOrServer(abc.ABC):
         since the last time this method was called.
         """
         connected = self.connected
-        self.log.debug(
-            f"call_connect_callback: {connected=}; was_connected={self._was_connected}"
-        )
+        self.log.debug(f"call_connect_callback: {connected=}; was_connected={self._was_connected}")
         if self._was_connected != connected:
             self._was_connected = connected
             if self.__connect_callback is not None:
@@ -424,9 +417,7 @@ class BaseClientOrServer(abc.ABC):
         except json.JSONDecodeError as e:
             # Expand the uninformative message in the raised exception
             # to include the invalid data.
-            raise json.JSONDecodeError(
-                msg=f"{data=!r} is not valid json", doc=e.doc, pos=e.pos
-            )
+            raise json.JSONDecodeError(msg=f"{data=!r} is not valid json", doc=e.doc, pos=e.pos)
 
     async def write(self, data: bytes) -> None:
         """Write data and call ``drain``.
@@ -583,13 +574,9 @@ class BaseClientOrServer(abc.ABC):
         """Start or re-start monitoring the connection."""
         self._monitor_connection_task.cancel()
         if self.monitor_connection_interval > 0:
-            self._monitor_connection_task = asyncio.create_task(
-                self._monitor_connection()
-            )
+            self._monitor_connection_task = asyncio.create_task(self._monitor_connection())
 
-    async def _set_reader_writer(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    async def _set_reader_writer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Set self._reader and self._writer to open streams.
 
         Set self.should_be_connected true.

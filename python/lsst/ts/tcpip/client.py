@@ -215,9 +215,7 @@ class Client(BaseClientOrServer):
             if self._reader is not None:
                 raise RuntimeError("Start already called.")
 
-            reader, writer = await asyncio.open_connection(
-                host=self.host, port=self.port, **kwargs
-            )
+            reader, writer = await asyncio.open_connection(host=self.host, port=self.port, **kwargs)
             await self._set_reader_writer(reader=reader, writer=writer)
             self._start_monitoring_connection()
             if self.run_heartbeat_send_task:
