@@ -8,6 +8,22 @@ Version History
 
 .. towncrier release notes start
 
+v2.3.0 (2026-10-05)
+===================
+
+New Features
+------------
+
+- Adapt the ruff format. (`OSW-1287 <https://rubinobs.atlassian.net//browse/OSW-1287>`_)
+- Add the local_scheme="no-local-version" to the setup.py. (`SSW-2992 <https://rubinobs.atlassian.net//browse/SSW-2992>`_)
+
+
+Other Changes and Additions
+---------------------------
+
+- Add and update the license header. (`OSW-2830 <https://rubinobs.atlassian.net//browse/OSW-2830>`_)
+
+
 v2.2.2 (2025-10-07)
 ===================
 
