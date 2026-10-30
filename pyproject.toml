@@ -7,7 +7,7 @@ name = "ts_tcpip"
 description = "Python code to support TCP/IP communication using asyncio."
 license = { text = "GPL" }
 classifiers = ["Programming Language :: Python :: 3"]
-urls = { documentation = "https://ts-tcpip.lsst.io", repository = "https://github.com/lsst-ts/ts_tcpip" }
+urls = { documentation = "https://ts-tcpip.lsst.io", source_code = "https://github.com/lsst-ts/ts_tcpip" }
 dynamic = ["version"]
 
 [tool.setuptools.dynamic]
